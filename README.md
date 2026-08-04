@@ -28,6 +28,10 @@ cd Conescapan-revision-de-referencias
 docker compose up -d grobid          # extractor de bibliografías, local
 pip install -e .
 cp .env.example .env                 # opcional, mejora rate limits
+
+# opcional: LLM local para rescatar referencias que GROBID no pudo parsear
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen2.5:7b-instruct
 ```
 
 ## Uso
@@ -48,6 +52,9 @@ Salidas en `reporte/`: `reporte.html` (autocontenido, funciona offline),
 | `--cache` | `refcheck_cache.db` | Cache SQLite de consultas |
 | `--workers` | `3` | Papers en paralelo — subilo con cuidado, el rate limit de las APIs es compartido |
 | `--no-overlap` | — | Omite el cruce entre manuscritos |
+| `--llm-rescue` | — | Usa un LLM local (Ollama) para rescatar referencias `UNPARSEABLE`. Nunca decide si la obra existe, solo reformatea el string crudo en JSON — la verificación real sigue corriendo contra Crossref/DBLP/OpenAlex/S2 |
+| `--ollama-url` | `http://localhost:11434` | URL del servicio Ollama |
+| `--ollama-model` | `qwen2.5:7b-instruct` | Modelo a usar para el rescate |
 
 ## Estados de verificación
 
@@ -119,8 +126,9 @@ los autores.
 
 ## Roadmap
 
-- [ ] Rescate de referencias `UNPARSEABLE` con un LLM local (Ollama): pasarle el
+- [x] Rescate de referencias `UNPARSEABLE` con un LLM local (Ollama): pasarle el
       string crudo y pedirle JSON estructurado. Nunca preguntarle si la obra existe.
+      Ver `--llm-rescue` y [`refcheck/llm_rescue.py`](refcheck/llm_rescue.py).
 - [ ] Referencias huérfanas vía `process_fulltext`: entradas en la bibliografía
       que nunca se citan, y `[n]` en el cuerpo sin entrada correspondiente.
 - [ ] MinHash + LSH si el lote supera los ~1000 manuscritos.

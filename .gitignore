@@ -19,3 +19,6 @@ ollama/
 .pytest_cache/
 .ruff_cache/
 .DS_Store
+
+# clon anidado accidental encontrado en el checkout, no es parte del proyecto
+/repo/
