@@ -1,0 +1,16 @@
+services:
+  grobid:
+    image: lfoppiano/grobid:0.8.1
+    ports: ["8070:8070"]
+    restart: unless-stopped
+    # La imagen -crf pesa ~300MB y corre en CPU. Existe una variante con
+    # modelos deep learning (grobid:0.8.1-full) que parsea mejor las
+    # referencias sucias, pero pide GPU y ~8GB.
+
+  # Opcional: LLM local para rescatar referencias que GROBID no pudo parsear.
+  # No participa en decidir si una referencia existe.
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes: ["./ollama:/root/.ollama"]
+    restart: unless-stopped

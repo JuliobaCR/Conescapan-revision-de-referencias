@@ -1,0 +1,35 @@
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+<text><back><div type="references"><listBibl>
+<biblStruct>
+<analytic>
+<title level="a" type="main">Attention Is All You Need</title>
+<author><persName><forename type="first">Ashish</forename><surname>Vaswani</surname></persName></author>
+<author><persName><forename type="first">Noam</forename><surname>Shazeer</surname></persName></author>
+</analytic>
+<monogr>
+<title level="m">Advances in Neural Information Processing Systems</title>
+<imprint><date type="published" when="2017">2017</date><biblScope unit="volume">30</biblScope></imprint>
+</monogr>
+<idno type="arXiv">arXiv:1706.03762</idno>
+<note type="raw_reference">A. Vaswani et al., "Attention is all you need," in NeurIPS, 2017.</note>
+</biblStruct>
+<biblStruct>
+<analytic>
+<title level="a" type="main">PC-DARTS: Partial Channel Connections for Memory-Efficient Architecture Search</title>
+<author><persName><surname>Xu</surname></persName></author>
+</analytic>
+<monogr>
+<title level="j">ICLR</title>
+<imprint><date when="2020"/></imprint>
+</monogr>
+<note type="raw_reference">Y. Xu et al., "PC-DARTS...," ICLR 2020. doi:10.48550/arXiv.1907.05737</note>
+</biblStruct>
+<biblStruct>
+<monogr>
+<title level="m">Deep Learning</title>
+<author><persName><surname>Goodfellow</surname></persName></author>
+<imprint><date when="2016"/><publisher>MIT Press</publisher></imprint>
+</monogr>
+<note type="raw_reference">I. Goodfellow, Deep Learning. MIT Press, 2016.</note>
+</biblStruct>
+</listBibl></div></back></text></TEI>

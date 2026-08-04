@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 1580" width="1020" height="1580" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#37506b"/>
+    </marker>
+    <marker id="arrowDim" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9aa0a8"/>
+    </marker>
+    <marker id="arrowNet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b06d15"/>
+    </marker>
+  </defs>
+
+  <rect width="1020" height="1580" fill="#f7f7f5"/>
+
+  <!-- ============ HEADER ============ -->
+  <text x="40" y="52" font-size="24" font-weight="600" fill="#16181d" letter-spacing="-0.3">refcheck — fase 1 de revisión</text>
+  <text x="40" y="76" font-size="14" fill="#6b7280">Del PDF al reporte: qué pasa en cada etapa y qué forma tiene el dato al salir de ella</text>
+  <line x1="40" y1="96" x2="980" y2="96" stroke="#d8dbe0" stroke-width="1"/>
+
+  <text x="40" y="120" font-size="10.5" font-weight="600" fill="#9aa0a8" letter-spacing="1.2">PROCESO</text>
+  <text x="352" y="120" font-size="10.5" font-weight="600" fill="#9aa0a8" letter-spacing="1.2">FORMA DEL DATO AL SALIR</text>
+
+  <!-- ============ ETAPA 0 ============ -->
+  <rect x="40" y="140" width="268" height="96" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <rect x="40" y="140" width="4" height="96" fill="#37506b"/>
+  <text x="60" y="168" font-size="11" font-weight="700" fill="#37506b" letter-spacing="0.8">0 · ENTRADA</text>
+  <text x="60" y="192" font-size="14" font-weight="600" fill="#16181d">submissions/*.pdf</text>
+  <text x="60" y="214" font-size="12" fill="#6b7280">Carpeta local. Nada se sube</text>
+  <text x="60" y="229" font-size="12" fill="#6b7280">a ningún servicio todavía.</text>
+
+  <rect x="352" y="140" width="628" height="96" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <text x="372" y="166" font-size="12.5" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#16181d">CONESCAPAN-042.pdf · 6 pp · doble columna · 1.4 MB</text>
+  <text x="372" y="196" font-size="12" fill="#6b7280">Binario. Extraer texto plano acá rompe las referencias en el salto de</text>
+  <text x="372" y="213" font-size="12" fill="#6b7280">columna — por eso no se usa pypdf directo.</text>
+
+  <line x1="174" y1="236" x2="174" y2="316" stroke="#37506b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ ETAPA 1 ============ -->
+  <rect x="40" y="320" width="268" height="96" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <rect x="40" y="320" width="4" height="96" fill="#37506b"/>
+  <text x="60" y="348" font-size="11" font-weight="700" fill="#37506b" letter-spacing="0.8">1 · EXTRACCIÓN</text>
+  <text x="60" y="372" font-size="14" font-weight="600" fill="#16181d">GROBID  :8070</text>
+  <text x="60" y="394" font-size="12" fill="#6b7280">Docker local. CRF entrenado</text>
+  <text x="60" y="409" font-size="12" fill="#6b7280">para segmentar bibliografías.</text>
+
+  <rect x="352" y="320" width="628" height="150" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <text x="372" y="344" font-size="10.5" font-weight="600" fill="#9aa0a8" letter-spacing="0.8">TEI XML</text>
+  <text xml:space="preserve" x="372" y="368" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#16181d">
+    <tspan x="372" dy="0">biblStruct</tspan>
+    <tspan x="392" dy="17">analytic/title level="a"  → Attention Is All You Need</tspan>
+    <tspan x="392" dy="17">author/persName/surname  → Vaswani</tspan>
+    <tspan x="392" dy="17">monogr/imprint/date       → when="2017"</tspan>
+    <tspan x="392" dy="17">idno type="arXiv"         → 1706.03762</tspan>
+    <tspan x="392" dy="17" fill="#6b7280">note type="raw_reference" → string original, para auditar</tspan>
+  </text>
+
+  <line x1="174" y1="416" x2="174" y2="496" stroke="#37506b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ ETAPA 2 ============ -->
+  <rect x="40" y="500" width="268" height="96" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <rect x="40" y="500" width="4" height="96" fill="#37506b"/>
+  <text x="60" y="528" font-size="11" font-weight="700" fill="#37506b" letter-spacing="0.8">2 · NORMALIZACIÓN</text>
+  <text x="60" y="552" font-size="14" font-weight="600" fill="#16181d">parse_tei_refs()</text>
+  <text x="60" y="574" font-size="12" fill="#6b7280">Apellidos, año, DOI limpio.</text>
+  <text x="60" y="589" font-size="12" fill="#6b7280">Sin acentos ni puntuación.</text>
+
+  <rect x="352" y="500" width="628" height="150" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <text x="372" y="524" font-size="10.5" font-weight="600" fill="#9aa0a8" letter-spacing="0.8">dataclass Reference</text>
+  <text x="372" y="548" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#16181d">
+    <tspan x="372" dy="0">Reference(index=1,</tspan>
+    <tspan x="392" dy="17">title="Attention Is All You Need",</tspan>
+    <tspan x="392" dy="17">authors=["Vaswani", "Shazeer"], year=2017,</tspan>
+    <tspan x="392" dy="17">doi=None, arxiv_id="1706.03762")</tspan>
+  </text>
+  <text x="372" y="634" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#6b7280">query_key = "attention is all you need|vaswani|2017"  ← clave de cache</text>
+
+  <line x1="174" y1="596" x2="174" y2="696" stroke="#37506b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ FRONTERA DE PRIVACIDAD ============ -->
+  <rect x="40" y="700" width="940" height="212" rx="6" fill="#fdf8ef" stroke="#e3cfa8" stroke-dasharray="5 4"/>
+  <text x="60" y="726" font-size="10.5" font-weight="700" fill="#b06d15" letter-spacing="1">ÚNICA ETAPA QUE TOCA LA RED</text>
+  <text x="285" y="726" font-size="11.5" fill="#8a6a30">solo cruzan cadenas de metadatos de obras ya publicadas — el manuscrito no sale nunca</text>
+
+  <!-- ============ ETAPA 3 ============ -->
+  <rect x="60" y="742" width="248" height="98" rx="5" fill="#ffffff" stroke="#e3cfa8"/>
+  <rect x="60" y="742" width="4" height="98" fill="#b06d15"/>
+  <text x="80" y="770" font-size="11" font-weight="700" fill="#b06d15" letter-spacing="0.8">3 · VERIFICACIÓN</text>
+  <text x="80" y="794" font-size="14" font-weight="600" fill="#16181d">Cascada de APIs</text>
+  <text x="80" y="816" font-size="12" fill="#6b7280">Corta al primer match fuerte.</text>
+  <text x="80" y="831" font-size="12" fill="#6b7280">Cache SQLite, 60 días.</text>
+
+  <text x="80" y="866" font-size="11.5" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#8a6a30">
+    <tspan x="80" dy="0">DOI → arXiv → DBLP →</tspan>
+    <tspan x="80" dy="16">Crossref → OpenAlex → S2</tspan>
+  </text>
+
+  <rect x="352" y="742" width="608" height="150" rx="5" fill="#ffffff" stroke="#e3cfa8"/>
+  <text x="372" y="766" font-size="10.5" font-weight="600" fill="#9aa0a8" letter-spacing="0.8">CANDIDATO NORMALIZADO (mismo dict venga de donde venga)</text>
+  <text xml:space="preserve" x="372" y="790" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#16181d">
+    <tspan x="372" dy="0">{ "title":   "Attention is All you Need",</tspan>
+    <tspan x="372" dy="17">  "authors": ["Vaswani", "Shazeer", "Parmar"],</tspan>
+    <tspan x="372" dy="17">  "year": 2017,  "venue": "NeurIPS",  "doi": null }</tspan>
+  </text>
+  <text x="372" y="876" font-size="12" fill="#6b7280">Resuelto por <tspan font-family="ui-monospace, Menlo, monospace" fill="#16181d">dblp</tspan> — las 3 bases restantes no se consultaron</text>
+
+  <line x1="184" y1="912" x2="184" y2="962" stroke="#37506b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ ETAPA 4 ============ -->
+  <rect x="40" y="966" width="268" height="112" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <rect x="40" y="966" width="4" height="112" fill="#37506b"/>
+  <text x="60" y="994" font-size="11" font-weight="700" fill="#37506b" letter-spacing="0.8">4 · SCORING</text>
+  <text x="60" y="1018" font-size="14" font-weight="600" fill="#16181d">decide()</text>
+  <text x="60" y="1040" font-size="12" fill="#6b7280">token_set_ratio del título +</text>
+  <text x="60" y="1055" font-size="12" fill="#6b7280">solape de apellidos + año +</text>
+  <text x="60" y="1070" font-size="12" fill="#6b7280">venue. Umbrales calibrables.</text>
+
+  <rect x="352" y="966" width="628" height="182" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <text x="372" y="990" font-size="10.5" font-weight="600" fill="#9aa0a8" letter-spacing="0.8">dataclass Verdict — uno de cinco estados</text>
+
+  <rect x="372" y="1002" width="588" height="52" rx="4" fill="#f4f9f6"/>
+  <text x="386" y="1022" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#2f7d5c">Verdict(status="VERIFIED", confidence=0.98, source="dblp",</text>
+  <text x="386" y="1040" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#2f7d5c">        issues=[])</text>
+
+  <rect x="372" y="1062" width="588" height="70" rx="4" fill="#fdf6f5"/>
+  <text x="386" y="1082" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#b0342c">Verdict(status="METADATA_MISMATCH", confidence=0.97,</text>
+  <text x="386" y="1100" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#b0342c">        issues=["ningún autor citado coincide"])</text>
+  <text x="386" y="1122" font-size="11.5" fill="#8a4a45">título real + autores que no son → firma de cita generada por LLM</text>
+
+  <line x1="174" y1="1078" x2="174" y2="1178" stroke="#37506b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ ETAPA 5 ============ -->
+  <rect x="40" y="1182" width="268" height="96" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <rect x="40" y="1182" width="4" height="96" fill="#37506b"/>
+  <text x="60" y="1210" font-size="11" font-weight="700" fill="#37506b" letter-spacing="0.8">5 · SALIDA</text>
+  <text x="60" y="1234" font-size="14" font-weight="600" fill="#16181d">render_html / csv / json</text>
+  <text x="60" y="1256" font-size="12" fill="#6b7280">HTML autocontenido, sin CDN.</text>
+  <text x="60" y="1271" font-size="12" fill="#6b7280">Funciona offline.</text>
+
+  <rect x="352" y="1182" width="628" height="96" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <text x="372" y="1208" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#16181d">
+    <tspan x="372" dy="0">reporte.html</tspan><tspan x="372" dy="18">referencias.csv</tspan><tspan x="372" dy="18">resultados.json</tspan>
+  </text>
+  <text x="510" y="1208" font-size="12" fill="#6b7280">
+    <tspan x="510" dy="0">214 refs · 31 requieren revisión (14%)</tspan>
+    <tspan x="510" dy="18">una fila por referencia, para triage en hoja de cálculo</tspan>
+    <tspan x="510" dy="18">crudo, para reprocesar sin volver a consultar las APIs</tspan>
+  </text>
+
+  <!-- ============ RAMA PARALELA ============ -->
+  <path d="M 40 200 L 22 200 L 22 1348 L 330 1348" fill="none" stroke="#9aa0a8" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arrowDim)" opacity="0.6"/>
+
+  <rect x="352" y="1300" width="628" height="118" rx="5" fill="#ffffff" stroke="#d8dbe0"/>
+  <text x="372" y="1326" font-size="11" font-weight="700" fill="#6b7280" letter-spacing="0.8">RAMA PARALELA · 100% LOCAL, SIN RED</text>
+  <text x="372" y="1350" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#16181d">body_text(pdf)  →  shingles(7 palabras)  →  set[int]  →  comparación por pares</text>
+  <text x="372" y="1378" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#b0342c">OverlapPair(a="042.pdf", b="118.pdf", jaccard=0.62, containment=1.00) → ALTO</text>
+  <text x="372" y="1400" font-size="11.5" fill="#6b7280">Detecta copia entre manuscritos del mismo lote. La bibliografía se recorta antes de comparar.</text>
+
+  <!-- ============ FUERA DE ALCANCE ============ -->
+  <line x1="40" y1="1450" x2="980" y2="1450" stroke="#d8dbe0"/>
+  <text x="40" y="1478" font-size="11" font-weight="700" fill="#b0342c" letter-spacing="0.8">FUERA DE ESTE PIPELINE</text>
+  <text x="40" y="1502" font-size="12.5" fill="#16181d">Plagio contra literatura publicada → <tspan font-weight="600">portal IEEE CrossCheck</tspan>, gratuito para conferencias del Conference Publications Program.</text>
+  <text x="40" y="1522" font-size="12.5" fill="#6b7280">No es un algoritmo, es un corpus de decenas de millones de documentos: no se replica localmente. Subirlo ahí es el proceso oficial, no una fuga.</text>
+  <text x="40" y="1548" font-size="12" fill="#6b7280">Ninguna salida de este pipeline justifica un rechazo por sí sola. Cada estado distinto de VERIFIED es un caso para revisión humana, no un veredicto.</text>
+</svg>

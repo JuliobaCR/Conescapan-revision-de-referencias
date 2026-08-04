@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+.env
+refcheck_cache.db
+
+# Los manuscritos bajo revisión NUNCA se versionan.
+submissions/
+reporte/
+*.pdf
+!docs/*.pdf
+
+ollama/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
