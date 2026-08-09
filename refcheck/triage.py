@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .extract import safe_path
+
 
 @dataclass
 class DocFlags:
@@ -33,7 +35,7 @@ def inspect_pdf(pdf_path: str | Path) -> DocFlags:
 
     flags = DocFlags()
     try:
-        doc = fitz.open(pdf_path)
+        doc = fitz.open(safe_path(pdf_path))
     except Exception as exc:  # noqa: BLE001
         flags.needs_review = True
         flags.reasons.append(f"no se pudo abrir el PDF ({exc})")

@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
 
+from .extract import safe_path
+
 SHINGLE_SIZE = 7          # 7 palabras: sensible a copia literal, tolerante a edición menor
 JACCARD_FLAG = 0.12       # umbral de reporte; calibrar con un batch real
 CONTAINMENT_FLAG = 0.25   # un paper corto contenido en uno largo
@@ -46,10 +48,20 @@ def body_text(pdf_path: str | Path) -> str:
 
     Las referencias comparten fraseo por naturaleza y dispararían falsos
     positivos en todo paper del mismo subcampo.
+
+    Un PDF ilegible (path demasiado largo para Windows, archivo corrupto,
+    etc.) no debe tirar abajo el cruce de solapamiento completo — mucho
+    menos después de ya haber gastado la cuota de las APIs verificando
+    referencias. Se degrada a "sin texto" (se excluye del cruce) en vez de
+    propagar la excepción.
     """
     import fitz
 
-    doc = fitz.open(pdf_path)
+    try:
+        doc = fitz.open(safe_path(pdf_path))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] no se pudo abrir {pdf_path} para el cruce de solapamiento ({exc})")
+        return ""
     text = "\n".join(p.get_text() for p in doc)
     doc.close()
 

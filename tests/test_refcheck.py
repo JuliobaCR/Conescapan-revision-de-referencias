@@ -4,12 +4,13 @@ Cubren lo que puede romperse en silencio: el parseo del TEI y las reglas de
 decisión. Un bug acá no falla ruidosamente, solo produce veredictos malos.
 """
 
+import sys
 from pathlib import Path
 
 import pytest
 
 from refcheck import dedupe
-from refcheck.extract import Reference, normalize, parse_tei_refs
+from refcheck.extract import Reference, normalize, parse_tei_refs, safe_path
 from refcheck.verify import author_overlap, decide, score_candidate
 
 FIXTURE = "tests/fixtures/sample_tei.xml"
@@ -61,6 +62,31 @@ def test_sin_titulo_ni_id_no_es_consultable():
 def test_normalize_quita_acentos_y_puntuacion():
     assert normalize("Búsqueda de Arquitecturas: un Análisis") == \
         "busqueda de arquitecturas un analisis"
+
+
+def test_safe_path_agrega_prefijo_extended_length_en_windows(tmp_path):
+    """Bug real: un submission con nombre de archivo largo + carpetas
+    anidadas supera los 260 caracteres (MAX_PATH) y PyMuPDF no lo abre."""
+    f = tmp_path / "un_nombre_cualquiera.pdf"
+    f.write_bytes(b"%PDF-1.4")
+
+    result = safe_path(f)
+
+    assert result.endswith("un_nombre_cualquiera.pdf")
+    if sys.platform == "win32":
+        assert result.startswith("\\\\?\\")
+
+
+def test_safe_path_es_idempotente(tmp_path):
+    """Aplicarlo dos veces (p.ej. si ya viene de otro safe_path) no debe
+    duplicar el prefijo ni romper la ruta."""
+    f = tmp_path / "otro.pdf"
+    f.write_bytes(b"%PDF-1.4")
+
+    once = safe_path(f)
+    twice = safe_path(once)
+
+    assert once == twice
 
 
 def test_query_key_es_estable():
@@ -170,6 +196,20 @@ def test_documentos_distintos_no_disparan():
 
 def test_texto_muy_corto_no_produce_shingles():
     assert dedupe.shingles("apenas tres palabras") == set()
+
+
+def test_body_text_no_explota_con_pdf_illegible(monkeypatch):
+    """Bug real: un submission con un path más largo que el límite de
+    Windows (260 caracteres) tiraba abajo TODO el cruce de solapamiento —
+    después de ya haber gastado la cuota de las APIs verificando las
+    referencias de los 191 papers del batch. Debe degradarse, no explotar."""
+    import fitz
+
+    def boom(path):
+        raise RuntimeError("no such file")
+
+    monkeypatch.setattr(fitz, "open", boom)
+    assert dedupe.body_text("un/path/cualquiera.pdf") == ""
 
 
 def test_scan_batch_no_colisiona_por_nombre_de_archivo_igual(monkeypatch):
