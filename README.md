@@ -41,9 +41,16 @@ set -a && source .env && set +a
 refcheck ./submissions --out ./reporte
 ```
 
-Salidas en `reporte/`: `reporte.html` (autocontenido, funciona offline),
-`referencias.csv` (una fila por referencia, para triage en hoja de cálculo) y
-`resultados.json` (crudo, para reprocesar sin volver a consultar las APIs).
+Salidas en `reporte/`: `reporte.html` (dashboard autocontenido, funciona
+offline — KPIs, gráfico de distribución por estado, y un listado de papers
+filtrable/buscable con comentario automático por manuscrito), `papers.csv`
+(una fila por paper — la vista de "qué reviso primero"), `referencias.csv`
+(una fila por referencia, para triage fino) y `resultados.json` (crudo, para
+reprocesar sin volver a consultar las APIs).
+
+`refcheck` busca PDFs recursivamente dentro de `input/` — soporta exports de
+sistemas de revisión con estructura `<N>/Submission/archivo.pdf`, y en ese
+caso usa `N` como ID del paper en el reporte en vez del nombre de archivo.
 
 | Opción | Default | Para qué |
 |---|---|---|

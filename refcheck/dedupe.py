@@ -87,6 +87,15 @@ def compare(sigs: dict[str, set[int]]) -> list[OverlapPair]:
     return pairs
 
 
-def scan_batch(pdf_paths: list[Path]) -> list[OverlapPair]:
-    sigs = {p.name: shingles(body_text(p)) for p in pdf_paths}
+def scan_batch(pdf_paths: list[Path], labels: dict[Path, str] | None = None) -> list[OverlapPair]:
+    """labels: nombre para mostrar por path (p.ej. el ID de submission).
+
+    Sin esto, la clave por defecto sería p.name — y dos submissions
+    distintos que se llamen igual ("paper.pdf" es común) colisionarían en
+    el diccionario, y uno desaparecería del cruce sin ningún error visible.
+    str(p) (path completo) es la clave por defecto porque, a diferencia del
+    nombre de archivo, siempre es única.
+    """
+    labels = labels or {}
+    sigs = {labels.get(p, str(p)): shingles(body_text(p)) for p in pdf_paths}
     return compare(sigs)

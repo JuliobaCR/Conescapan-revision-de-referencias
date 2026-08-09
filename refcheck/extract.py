@@ -211,16 +211,38 @@ def parse_tei_refs(tei_xml: str) -> list[Reference]:
 # --------------------------------------------------------------------------
 
 HEADINGS = re.compile(
-    r"^\s*(references?|referencias|bibliograf[íi]a|bibliography)\s*$",
+    r"^\s*(?:[ivxlcdm]+\.?|\d{1,2}\.?)?\s*"
+    r"(references?|referencias(?:\s+bibliogr[áa]ficas)?|bibliograf[íi]a|"
+    r"bibliography|literature\s+cited|works\s+cited)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
+# Algunos templates numeran "1." en vez de "[1]" (ver docstring de
+# extract_refs_regex). El corte solo se usa si hay al menos 3 marcadores
+# consecutivos 1,2,3… al inicio de línea, para no partir en cualquier "1."
+# que aparezca dentro de una referencia (ISBNs, rangos de página, etc.).
+_NUMBERED_DOT = re.compile(r"^\s*(\d{1,3})\.\s+(?=[A-ZÁÉÍÓÚÑ])", re.MULTILINE)
+
+
+def _split_by_markers(tail: str, pattern: re.Pattern) -> list[tuple[int, str]]:
+    parts = pattern.split(tail)
+    out = []
+    for i in range(1, len(parts) - 1, 2):
+        body = re.sub(r"\s+", " ", parts[i + 1]).strip()
+        if len(body) >= 20:
+            out.append((int(parts[i]), body))
+    return out
+
 
 def extract_refs_regex(pdf_path: str | Path) -> list[Reference]:
-    """Plan B: cortar el texto en el encabezado de bibliografía y partir por [n].
+    """Plan B: cortar el texto en el encabezado de bibliografía y partir por
+    marcador numerado ("[1]" o "1.").
 
-    Funciona razonablemente bien con el template IEEE (refs numeradas), mal
-    con estilos autor-año. Usar solo si GROBID no está disponible.
+    Funciona razonablemente bien con templates de una columna y numeración
+    secuencial; mal con estilos autor-año o layouts a dos columnas, donde
+    PyMuPDF puede mezclar el orden de lectura. Usar solo si GROBID no está
+    disponible — GROBID sí entiende columnas y estilos porque parsea el
+    layout, no solo el texto plano.
     """
     import fitz  # pymupdf
 
@@ -233,14 +255,16 @@ def extract_refs_regex(pdf_path: str | Path) -> list[Reference]:
         return []
     tail = text[matches[-1].end():]
 
-    # partir en cada marcador [n] que abre línea
-    parts = re.split(r"\n?\s*\[(\d{1,3})\]\s*", tail)
+    markers = _split_by_markers(tail, re.compile(r"\n?\s*\[(\d{1,3})\]\s*"))
+    if not markers:
+        # plan C: numeración "1." sin corchetes
+        candidates = _NUMBERED_DOT.findall(tail)
+        if len(candidates) >= 3 and [int(n) for n in candidates[:3]] == [1, 2, 3]:
+            markers = _split_by_markers(tail, _NUMBERED_DOT)
+
     refs: list[Reference] = []
-    for i in range(1, len(parts) - 1, 2):
-        body = re.sub(r"\s+", " ", parts[i + 1]).strip()
-        if len(body) < 20:
-            continue
-        ref = Reference(index=int(parts[i]), raw=body, source="regex")
+    for idx, body in markers:
+        ref = Reference(index=idx, raw=body, source="regex")
         m = re.search(r"(19|20)\d{2}", body)
         if m:
             ref.year = int(m.group(0))
