@@ -14,6 +14,7 @@ Dependencias: requests, pymupdf  (rapidfuzz opcional para el dedupe)
 from __future__ import annotations
 
 import re
+import sys
 import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
@@ -22,6 +23,18 @@ from pathlib import Path
 import requests
 
 TEI_NS = {"tei": "http://www.tei-c.org/ns/1.0"}
+
+
+def safe_path(path: str | Path) -> str:
+    """Ruta segura para abrir el PDF sin importar cuán largo sea el nombre
+    de archivo. Windows trunca a 260 caracteres (MAX_PATH) salvo que se use
+    el prefijo "\\\\?\\" de extended-length path — varios submissions
+    reales de CONESCAPAN lo superan (títulos largos + carpetas anidadas)."""
+    p = Path(path).resolve()
+    s = str(p)
+    if sys.platform == "win32" and not s.startswith("\\\\?\\"):
+        return f"\\\\?\\{s}"
+    return s
 
 
 # --------------------------------------------------------------------------
@@ -96,7 +109,7 @@ class GrobidClient:
         servicios externos por su cuenta. Nosotros controlamos qué se envía
         y a dónde en la fase de verificación.
         """
-        with open(pdf_path, "rb") as fh:
+        with open(safe_path(pdf_path), "rb") as fh:
             r = requests.post(
                 f"{self.url}/api/processReferences",
                 files={"input": fh},
@@ -111,7 +124,7 @@ class GrobidClient:
         Más lento (~10-30s) pero permite detectar refs huérfanas (listadas
         pero nunca citadas) y citas huérfanas ([12] sin entrada en la lista).
         """
-        with open(pdf_path, "rb") as fh:
+        with open(safe_path(pdf_path), "rb") as fh:
             r = requests.post(
                 f"{self.url}/api/processFulltextDocument",
                 files={"input": fh},
@@ -246,7 +259,7 @@ def extract_refs_regex(pdf_path: str | Path) -> list[Reference]:
     """
     import fitz  # pymupdf
 
-    doc = fitz.open(pdf_path)
+    doc = fitz.open(safe_path(pdf_path))
     text = "\n".join(page.get_text() for page in doc)
     doc.close()
 

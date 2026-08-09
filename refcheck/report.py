@@ -249,6 +249,20 @@ def stacked_bar_svg(counts: dict[str, int], width: int, height: int = 22,
     return "".join(parts)
 
 
+def match_link(matched: dict) -> str | None:
+    """Link al registro hallado, si hay algo resoluble. DOI primero — es el
+    identificador estándar y sobrevive a que una editorial cambie su URL;
+    el "url" que trae cada backend (Crossref/DBLP/OpenAlex/S2/arXiv) es el
+    respaldo cuando no hay DOI."""
+    doi = matched.get("doi")
+    if doi:
+        return f"https://doi.org/{doi}"
+    url = matched.get("url")
+    if url and url.startswith(("http://", "https://")):
+        return url
+    return None
+
+
 def status_legend_html() -> str:
     items = "".join(
         f'<span class="legend-item"><span class="swatch" '
@@ -378,8 +392,13 @@ def render_html(results: list[dict], overlaps: list, out: Path) -> None:
             m = v.get("matched")
             if m:
                 au = ", ".join(m.get("authors", [])[:4]) or "—"
+                link = match_link(m)
+                title_html = (
+                    f'<a href="{_e(link)}" target=_blank rel=noopener>{_e(m.get("title"))}</a>'
+                    if link else _e(m.get("title"))
+                )
                 parts.append(
-                    f'<div class=found>Registro hallado: <b>{_e(m.get("title"))}</b> · '
+                    f'<div class=found>Registro hallado: <b>{title_html}</b> · '
                     f'{_e(au)} · {_e(m.get("year") or "—")} · {_e(m.get("venue") or "—")}</div>'
                 )
             for issue in v.get("issues", []):
