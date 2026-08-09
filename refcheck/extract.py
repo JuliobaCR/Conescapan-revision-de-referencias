@@ -13,8 +13,12 @@ Dependencias: requests, pymupdf  (rapidfuzz opcional para el dedupe)
 
 from __future__ import annotations
 
+import json
 import re
+import sqlite3
 import sys
+import threading
+import time
 import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
@@ -23,6 +27,7 @@ from pathlib import Path
 import requests
 
 TEI_NS = {"tei": "http://www.tei-c.org/ns/1.0"}
+GROBID_RETRIES = 1  # reintentos por PDF ante un fallo puntual (timeout, etc.) antes de caer a regex
 
 
 def safe_path(path: str | Path) -> str:
@@ -256,10 +261,19 @@ def extract_refs_regex(pdf_path: str | Path) -> list[Reference]:
     PyMuPDF puede mezclar el orden de lectura. Usar solo si GROBID no está
     disponible — GROBID sí entiende columnas y estilos porque parsea el
     layout, no solo el texto plano.
+
+    Si ni PyMuPDF puede abrir el archivo (además de que GROBID ya falló),
+    no hay más red de seguridad: se devuelve vacío en vez de propagar la
+    excepción, para que el paper quede con "0 referencias" y no desaparezca
+    del batch entero.
     """
     import fitz  # pymupdf
 
-    doc = fitz.open(safe_path(pdf_path))
+    try:
+        doc = fitz.open(safe_path(pdf_path))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] tampoco se pudo abrir {pdf_path} para el fallback regex ({exc})")
+        return []
     text = "\n".join(page.get_text() for page in doc)
     doc.close()
 
@@ -293,28 +307,121 @@ def extract_refs_regex(pdf_path: str | Path) -> list[Reference]:
 
 
 # --------------------------------------------------------------------------
+# Cache de extracción: qué encontró GROBID/regex en cada PDF
+# --------------------------------------------------------------------------
+#
+# Separada de la cache de verificación (verify.Cache, que guarda resultados
+# de las APIs externas). Sin esto, cada corrida completa del batch vuelve a
+# mandar todos los PDFs a GROBID desde cero — incluso los que ya habían
+# salido bien — así que cualquier corrida repetida se expone de nuevo al
+# mismo riesgo de timeouts bajo carga, y tarda lo mismo que la primera vez.
+#
+# Invalida sola si el archivo cambia (mtime + tamaño). EXTRACT_CACHE_VERSION
+# es la invalidación manual: subila si cambiás parse_tei_refs,
+# extract_refs_regex o HEADINGS, para no servir extracciones viejas hechas
+# con lógica desactualizada.
+
+EXTRACT_CACHE_VERSION = 1
+
+
+class ExtractionCache:
+    def __init__(self, path: str = "refcheck_extract_cache.db"):
+        self.con = sqlite3.connect(path, check_same_thread=False)
+        self.lock = threading.Lock()
+        with self.lock:
+            self.con.execute(
+                "CREATE TABLE IF NOT EXISTS extract_cache ("
+                "  key TEXT PRIMARY KEY, refs TEXT, note TEXT, ts REAL)"
+            )
+            self.con.commit()
+
+    @staticmethod
+    def _key(pdf_path: Path) -> str:
+        st = pdf_path.stat()
+        return f"v{EXTRACT_CACHE_VERSION}|{pdf_path.resolve()}|{st.st_mtime_ns}|{st.st_size}"
+
+    def get(self, pdf_path: Path) -> tuple[list[Reference], str | None] | None:
+        try:
+            key = self._key(pdf_path)
+        except OSError:
+            return None
+        with self.lock:
+            row = self.con.execute(
+                "SELECT refs, note FROM extract_cache WHERE key = ?", (key,)
+            ).fetchone()
+        if not row:
+            return None
+        refs = [Reference(**d) for d in json.loads(row[0])]
+        return refs, row[1]
+
+    def put(self, pdf_path: Path, refs: list[Reference], note: str | None) -> None:
+        try:
+            key = self._key(pdf_path)
+        except OSError:
+            return
+        payload = json.dumps([r.to_dict() for r in refs])
+        with self.lock:
+            self.con.execute(
+                "INSERT OR REPLACE INTO extract_cache VALUES (?, ?, ?, ?)",
+                (key, payload, note, time.time()),
+            )
+            self.con.commit()
+
+
+# --------------------------------------------------------------------------
 # Entrada única
 # --------------------------------------------------------------------------
 
-def extract_references(pdf_path: str | Path,
-                       grobid_url: str = "http://localhost:8070") -> list[Reference]:
+def extract_references(
+    pdf_path: str | Path,
+    grobid_url: str = "http://localhost:8070",
+    cache: ExtractionCache | None = None,
+) -> tuple[list[Reference], str | None]:
+    """Devuelve (referencias, nota). `nota` es None si GROBID extrajo todo
+    sin problemas; si no, describe por qué se usó el extractor de respaldo
+    (más débil) — para que el dashboard lo pueda mostrar en vez de que la
+    degradación quede invisible, solo en un print() que se pierde."""
+    pdf_path = Path(pdf_path)
+
+    if cache is not None:
+        cached = cache.get(pdf_path)
+        if cached is not None:
+            return cached
+
     client = GrobidClient(grobid_url)
-    if client.alive():
-        try:
-            return parse_tei_refs(client.process_references(pdf_path))
-        except Exception as exc:  # noqa: BLE001
-            print(f"[warn] GROBID falló ({exc}); usando fallback regex")
+    if not client.alive():
+        note = "GROBID no responde; se usó el extractor de respaldo (menos preciso)"
+        print(f"[warn] {note}")
+        result = (extract_refs_regex(pdf_path), note)
     else:
-        print("[warn] GROBID no responde; usando fallback regex")
-    return extract_refs_regex(pdf_path)
+        result = _extract_via_grobid(client, pdf_path)
+
+    if cache is not None:
+        cache.put(pdf_path, *result)
+    return result
+
+
+def _extract_via_grobid(client: GrobidClient, pdf_path: Path) -> tuple[list[Reference], str | None]:
+    last_exc: Exception | None = None
+    for attempt in range(GROBID_RETRIES + 1):
+        try:
+            return parse_tei_refs(client.process_references(pdf_path)), None
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < GROBID_RETRIES:
+                print(f"[warn] GROBID falló en {pdf_path.name} ({exc}); reintentando…")
+                time.sleep(2)
+    note = f"GROBID falló tras reintentar ({last_exc}); se usó el extractor de respaldo (menos preciso)"
+    print(f"[warn] {note}")
+    return extract_refs_regex(pdf_path), note
 
 
 if __name__ == "__main__":
-    import json
     import sys
 
-    refs = extract_references(sys.argv[1])
+    refs, note = extract_references(sys.argv[1])
     ok = sum(r.is_queryable for r in refs)
     print(f"{len(refs)} referencias | {ok} consultables | "
-          f"{sum(1 for r in refs if r.doi)} con DOI")
+          f"{sum(1 for r in refs if r.doi)} con DOI"
+          + (f" | {note}" if note else ""))
     print(json.dumps([r.to_dict() for r in refs], indent=2, ensure_ascii=False))

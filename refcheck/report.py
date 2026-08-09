@@ -36,18 +36,22 @@ STATUS_COLOR = {
 }
 
 PAPER_CATEGORY_LABEL = {
-    "OK": "Todas verificadas",
-    "MIXTO": "Parcialmente verificadas",
-    "SIN_VERIFICADAS": "Ninguna verificada",
-    "SIN_REFERENCIAS": "Sin referencias detectadas",
+    "ERROR_PROCESAMIENTO": "Error de procesamiento",
     "REVISAR_MANUAL": "Revisar manualmente",
+    "EXTRACCION_INCOMPLETA": "Extracción incompleta",
+    "SIN_VERIFICADAS": "Ninguna verificada",
+    "MIXTO": "Parcialmente verificadas",
+    "SIN_REFERENCIAS": "Sin referencias detectadas",
+    "OK": "Todas verificadas",
 }
 PAPER_CATEGORY_COLOR = {
-    "OK": "#0ca30c",
-    "MIXTO": "#fab219",
-    "SIN_VERIFICADAS": "#d03b3b",
-    "SIN_REFERENCIAS": "#898781",
+    "ERROR_PROCESAMIENTO": "#eb6834",
     "REVISAR_MANUAL": "#4a3aa7",
+    "EXTRACCION_INCOMPLETA": "#2a78d6",
+    "SIN_VERIFICADAS": "#d03b3b",
+    "MIXTO": "#fab219",
+    "SIN_REFERENCIAS": "#898781",
+    "OK": "#0ca30c",
 }
 
 CSS = """
@@ -172,11 +176,15 @@ def status_counts(refs: list[dict]) -> dict[str, int]:
 
 
 def paper_category(paper: dict) -> str:
+    if paper.get("processing_error"):
+        return "ERROR_PROCESAMIENTO"
     if (paper.get("doc_flags") or {}).get("needs_review"):
         return "REVISAR_MANUAL"
     refs = paper["references"]
     if not refs:
         return "SIN_REFERENCIAS"
+    if paper.get("extraction_note"):
+        return "EXTRACCION_INCOMPLETA"
     counts = status_counts(refs)
     total = len(refs)
     verified = counts.get("VERIFIED", 0)
@@ -188,6 +196,10 @@ def paper_category(paper: dict) -> str:
 
 
 def paper_comment(paper: dict) -> str:
+    if paper.get("processing_error"):
+        return (f"El procesamiento de este paper falló y no se completó: "
+                f"{paper['processing_error']}. Revisar el PDF a mano.")
+
     flags = paper.get("doc_flags") or {}
     if flags.get("needs_review"):
         return "Revisar manualmente: " + "; ".join(flags.get("reasons", [])) + "."
@@ -195,6 +207,10 @@ def paper_comment(paper: dict) -> str:
     refs = paper["references"]
     if not refs:
         return "No se detectaron referencias — revisar la extracción a mano."
+
+    extraction_prefix = ""
+    if paper.get("extraction_note"):
+        extraction_prefix = f"⚠ {paper['extraction_note']}. "
 
     counts = status_counts(refs)
     total = len(refs)
@@ -211,7 +227,7 @@ def paper_comment(paper: dict) -> str:
         bits.append(f"{counts['UNPARSEABLE']} sin texto suficiente para buscar.")
     if paper.get("llm_rescued"):
         bits.append(f"{paper['llm_rescued']} rescatadas por LLM local.")
-    return " ".join(bits)
+    return extraction_prefix + " ".join(bits)
 
 
 def _bar_segments(counts: dict[str, int]) -> list[tuple[str, int]]:
@@ -289,10 +305,9 @@ def render_html(results: list[dict], overlaps: list, out: Path) -> None:
     for paper in results:
         cat = paper_category(paper)
         cat_counts[cat] = cat_counts.get(cat, 0) + 1
-    needs_review_papers = sum(
-        1 for p in results
-        if paper_category(p) in ("MIXTO", "SIN_VERIFICADAS", "SIN_REFERENCIAS", "REVISAR_MANUAL")
-    )
+    # "OK" es la única categoría sin nada para revisar; todo lo demás
+    # (incluidos error de procesamiento y extracción incompleta) cuenta.
+    needs_review_papers = sum(1 for p in results if paper_category(p) != "OK")
 
     overlap_partners: dict[str, list[str]] = {}
     for pair in overlaps:
@@ -451,7 +466,8 @@ def render_papers_csv(results: list[dict], out: Path) -> None:
         w = csv.writer(fh)
         w.writerow(["submission_id", "archivo", "categoria", "refs_totales",
                     "refs_verificadas", "refs_a_revisar", "revisar_manual",
-                    "motivo_revision_manual", "rescatadas_llm", "comentario"])
+                    "motivo_revision_manual", "extraccion_incompleta",
+                    "error_procesamiento", "rescatadas_llm", "comentario"])
         for paper in results:
             refs = paper["references"]
             counts = status_counts(refs)
@@ -462,6 +478,8 @@ def render_papers_csv(results: list[dict], out: Path) -> None:
                 sum(1 for r in refs if r["verdict"]["status"] in NEEDS_REVIEW),
                 flags.get("needs_review", False),
                 " | ".join(flags.get("reasons", [])),
+                paper.get("extraction_note") or "",
+                paper.get("processing_error") or "",
                 paper.get("llm_rescued", 0), paper_comment(paper),
             ])
 

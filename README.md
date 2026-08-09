@@ -56,7 +56,9 @@ caso usa `N` como ID del paper en el reporte en vez del nombre de archivo.
 |---|---|---|
 | `--out` | `reporte` | Carpeta de salida |
 | `--grobid` | `http://localhost:8070` | URL del servicio GROBID |
-| `--cache` | `refcheck_cache.db` | Cache SQLite de consultas |
+| `--cache` | `refcheck_cache.db` | Cache SQLite de resultados de verificación (APIs) |
+| `--extract-cache` | `refcheck_extract_cache.db` | Cache SQLite de qué extrajo GROBID/regex de cada PDF — una corrida repetida no vuelve a mandar todo el batch a GROBID, solo lo que cambió o falló |
+| `--no-extract-cache` | — | Ignorarla y re-extraer todo (por si cambiaste algo en `extract.py`) |
 | `--workers` | `3` | Papers en paralelo — subilo con cuidado, el rate limit de las APIs es compartido |
 | `--no-overlap` | — | Omite el cruce entre manuscritos |
 | `--llm-rescue` | — | Usa un LLM local (Ollama) para rescatar referencias `UNPARSEABLE`. Nunca decide si la obra existe, solo reformatea el string crudo en JSON — la verificación real sigue corriendo contra Crossref/DBLP/OpenAlex/S2 |
