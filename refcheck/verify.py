@@ -39,6 +39,7 @@ UA = f"refcheck/1.0 (revisión de conferencia; mailto:{CROSSREF_MAILTO or 'unset
 T_STRONG = 92.0     # similitud de título para dar por verificada
 T_WEAK = 80.0       # por debajo de esto, no es la misma obra
 YEAR_TOLERANCE = 1  # preprint en 2019 publicado en 2020 es normal
+SHORT_TITLE_WORDS = 4  # con menos palabras citadas, el título solo no alcanza para verificar
 
 
 @dataclass
@@ -169,6 +170,10 @@ def score_candidate(ref: Reference, cand: dict) -> tuple[float, list[str]]:
     return t_sim, issues
 
 
+def _title_word_count(ref: Reference) -> int:
+    return len(normalize(ref.title or ref.raw).split())
+
+
 def decide(ref: Reference, cand: dict | None, source: str | None) -> Verdict:
     if cand is None:
         return Verdict(status="NOT_FOUND", confidence=0.0)
@@ -181,6 +186,24 @@ def decide(ref: Reference, cand: dict | None, source: str | None) -> Verdict:
         # una referencia generada por un LLM.
         if ov == 0.0:
             return Verdict("METADATA_MISMATCH", t_sim / 100, source, cand, issues)
+
+        # Un título citado muy corto ("machine learning power grid") puede
+        # dar token_set_ratio alto contra el paper equivocado por pura
+        # coincidencia de palabras genéricas. Con pocas palabras, el título
+        # solo no alcanza — hace falta que el autor o el año lo respalden.
+        if _title_word_count(ref) < SHORT_TITLE_WORDS and ov <= 0:
+            year_ok = (
+                ref.year and cand.get("year")
+                and abs(ref.year - int(cand["year"])) <= YEAR_TOLERANCE
+            )
+            if not year_ok:
+                issues.insert(
+                    0,
+                    f"título citado muy corto ({_title_word_count(ref)} palabras) y sin "
+                    "autor ni año que lo confirmen — la coincidencia de título sola no alcanza",
+                )
+                return Verdict("POSSIBLE_MATCH", t_sim / 100, source, cand, issues)
+
         status = "VERIFIED" if not issues else "METADATA_MISMATCH"
         return Verdict(status, t_sim / 100, source, cand, issues)
 
