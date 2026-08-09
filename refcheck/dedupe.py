@@ -46,10 +46,20 @@ def body_text(pdf_path: str | Path) -> str:
 
     Las referencias comparten fraseo por naturaleza y dispararían falsos
     positivos en todo paper del mismo subcampo.
+
+    Un PDF ilegible (path demasiado largo para Windows, archivo corrupto,
+    etc.) no debe tirar abajo el cruce de solapamiento completo — mucho
+    menos después de ya haber gastado la cuota de las APIs verificando
+    referencias. Se degrada a "sin texto" (se excluye del cruce) en vez de
+    propagar la excepción.
     """
     import fitz
 
-    doc = fitz.open(pdf_path)
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] no se pudo abrir {pdf_path} para el cruce de solapamiento ({exc})")
+        return ""
     text = "\n".join(p.get_text() for p in doc)
     doc.close()
 

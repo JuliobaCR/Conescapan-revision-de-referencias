@@ -172,6 +172,20 @@ def test_texto_muy_corto_no_produce_shingles():
     assert dedupe.shingles("apenas tres palabras") == set()
 
 
+def test_body_text_no_explota_con_pdf_illegible(monkeypatch):
+    """Bug real: un submission con un path más largo que el límite de
+    Windows (260 caracteres) tiraba abajo TODO el cruce de solapamiento —
+    después de ya haber gastado la cuota de las APIs verificando las
+    referencias de los 191 papers del batch. Debe degradarse, no explotar."""
+    import fitz
+
+    def boom(path):
+        raise RuntimeError("no such file")
+
+    monkeypatch.setattr(fitz, "open", boom)
+    assert dedupe.body_text("un/path/cualquiera.pdf") == ""
+
+
 def test_scan_batch_no_colisiona_por_nombre_de_archivo_igual(monkeypatch):
     """Bug real visto con submissions de CONESCAPAN: dos papers distintos,
     de carpetas distintas, ambos subidos como "paper.pdf". Sin labels por
