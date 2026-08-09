@@ -149,6 +149,26 @@ def test_sin_autores_extraidos_no_penaliza():
     assert author_overlap([], ["Vaswani"]) == -1.0
 
 
+def test_titulo_muy_corto_sin_autor_ni_anio_no_se_da_por_verificada():
+    """"Attention Need" son 2 palabras, ambas dentro del título real — el
+    token_set_ratio da altísimo por pura coincidencia de palabras, pero sin
+    autor ni año que lo respalden no debería alcanzar para VERIFIED."""
+    r = Reference(index=10, title="Attention Need")
+    v = decide(r, CANDIDATO, "dblp")
+    assert v.status == "POSSIBLE_MATCH"
+    assert any("corto" in i for i in v.issues)
+
+
+def test_titulo_corto_se_verifica_si_el_autor_coincide():
+    r = Reference(index=11, title="Attention Need", authors=["Vaswani"])
+    assert decide(r, CANDIDATO, "dblp").status == "VERIFIED"
+
+
+def test_titulo_corto_se_verifica_si_el_año_coincide():
+    r = Reference(index=12, title="Attention Need", year=2017)
+    assert decide(r, CANDIDATO, "dblp").status == "VERIFIED"
+
+
 def test_candidato_ausente_es_not_found():
     r = Reference(index=7, title="Lo que sea", authors=["X"], year=2020)
     assert decide(r, None, None).status == "NOT_FOUND"

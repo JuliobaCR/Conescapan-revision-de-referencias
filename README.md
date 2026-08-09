@@ -98,7 +98,8 @@ debería romper el build.
 ## Calibración
 
 Los umbrales viven en `refcheck/verify.py` (`T_STRONG`, `T_WEAK`,
-`YEAR_TOLERANCE`) y `refcheck/dedupe.py` (`JACCARD_FLAG`, `CONTAINMENT_FLAG`).
+`YEAR_TOLERANCE`, `SHORT_TITLE_WORDS`) y `refcheck/dedupe.py` (`JACCARD_FLAG`,
+`CONTAINMENT_FLAG`).
 
 Antes de usarlo en producción, corré 20–30 papers ya revisados a mano y ajustá
 hasta que la tasa de flags sea manejable para el comité. Sin esa calibración
