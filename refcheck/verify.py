@@ -113,6 +113,24 @@ class RateLimiter:
 # Scoring: acá se decide si un candidato es realmente la obra citada
 # --------------------------------------------------------------------------
 
+def _surname_matches(a: str, b: str) -> bool:
+    """¿"a" y "b" son el mismo apellido? Tolera el apellido compuesto
+    hispano (paterno + materno): una cita que solo trae el primer apellido
+    ("Martinez") debe matchear contra un registro con el apellido completo
+    ("Martinez Betancourt") — es la forma de citar más común, no un error.
+
+    Comparamos por el primer token de cada lado (el apellido paterno,
+    convención hispana) en vez de por substring/token sueltos, para no
+    confundir el apellido materno de una persona con el de otra distinta
+    que comparta ese segundo apellido.
+    """
+    if fuzz.ratio(a, b) > 88:
+        return True
+    a0 = a.split()[0] if a.split() else a
+    b0 = b.split()[0] if b.split() else b
+    return fuzz.ratio(a0, b0) > 88
+
+
 def author_overlap(cited: list[str], found: list[str]) -> float:
     """Fracción de apellidos citados que aparecen en el candidato."""
     if not cited or not found:
@@ -121,7 +139,7 @@ def author_overlap(cited: list[str], found: list[str]) -> float:
     f = {normalize(a) for a in found if a}
     if not c or not f:
         return -1.0
-    hits = sum(1 for a in c if any(fuzz.ratio(a, b) > 88 for b in f))
+    hits = sum(1 for a in c if any(_surname_matches(a, b) for b in f))
     return hits / len(c)
 
 

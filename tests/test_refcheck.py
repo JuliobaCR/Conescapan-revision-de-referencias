@@ -166,6 +166,20 @@ def test_solape_de_autores_es_tolerante_a_tildes():
     assert author_overlap(["Jiménez"], ["Jimenez", "Mora"]) == 1.0
 
 
+def test_solape_de_autores_tolera_apellido_compuesto_hispano():
+    """Caso real: la cita trae solo el primer apellido ("Martinez"), el
+    registro tiene apellido paterno + materno completo ("Martinez
+    Betancourt"). Es la forma normal de citar, no debe contar como
+    discrepancia."""
+    assert author_overlap(["Martinez"], ["Martinez Betancourt", "Lozano Mata"]) == 1.0
+
+
+def test_solape_de_autores_no_confunde_apellido_materno_de_otra_persona():
+    """"Betancourt" (apellido materno) no debe matchear contra el apellido
+    paterno de otra persona distinta con el mismo segundo apellido."""
+    assert author_overlap(["Betancourt"], ["Rodriguez Betancourt"]) == 0.0
+
+
 def test_venue_distinto_se_reporta():
     r = Reference(index=9, title="Attention Is All You Need",
                   authors=["Vaswani"], year=2017, venue="IEEE Transactions on Cats")
