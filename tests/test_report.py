@@ -60,12 +60,40 @@ def test_categoria_revisar_manual_gana_a_todo_lo_demas():
     assert paper_category(paper) == "REVISAR_MANUAL"
 
 
+def test_categoria_extraccion_incompleta():
+    """GROBID falló y se usó el fallback regex — el paper sí se procesó,
+    pero puede faltar referencias sin listar. Distinto de REVISAR_MANUAL
+    (que es sobre si el PDF es un paper de verdad) y de ERROR_PROCESAMIENTO
+    (que es que no se pudo procesar nada)."""
+    paper = {"doc_flags": {"needs_review": False}, "extraction_note": "GROBID falló",
+             "references": [_ref("VERIFIED")] * 3}
+    assert paper_category(paper) == "EXTRACCION_INCOMPLETA"
+
+
+def test_categoria_error_procesamiento_gana_a_todo():
+    paper = {"doc_flags": {"needs_review": True, "reasons": ["x"]},
+             "extraction_note": "y", "processing_error": "boom",
+             "references": [_ref("VERIFIED")] * 3}
+    assert paper_category(paper) == "ERROR_PROCESAMIENTO"
+
+
 # --------------------------------------------------------------- paper_comment
 
 def test_comment_menciona_el_motivo_de_revision_manual():
     paper = {"doc_flags": {"needs_review": True, "reasons": ["80% de páginas horizontales"]},
              "references": []}
     assert "80% de páginas horizontales" in paper_comment(paper)
+
+
+def test_comment_menciona_extraccion_incompleta():
+    paper = {"doc_flags": {"needs_review": False}, "extraction_note": "GROBID falló tras reintentar",
+             "references": [_ref("VERIFIED")]}
+    assert "GROBID falló tras reintentar" in paper_comment(paper)
+
+
+def test_comment_menciona_error_de_procesamiento():
+    paper = {"doc_flags": {}, "processing_error": "PDF corrupto", "references": []}
+    assert "PDF corrupto" in paper_comment(paper)
 
 
 def test_comment_sin_referencias():

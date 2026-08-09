@@ -8,6 +8,7 @@ dist/
 
 .env
 refcheck_cache.db
+refcheck_extract_cache.db
 
 # Los manuscritos bajo revisión NUNCA se versionan.
 submissions/
