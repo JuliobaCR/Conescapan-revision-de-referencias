@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -58,18 +59,27 @@ class Verdict:
 # --------------------------------------------------------------------------
 
 class Cache:
+    """Un Verifier se comparte entre los threads del pool (--workers), así
+    que la conexión también. SQLite prohíbe eso por default; se habilita con
+    check_same_thread=False y se serializa el acceso con un lock — más
+    simple que abrir una conexión por thread, y el volumen de un batch de
+    papers no justifica nada más elaborado."""
+
     def __init__(self, path: str = "refcheck_cache.db"):
-        self.con = sqlite3.connect(path)
-        self.con.execute(
-            "CREATE TABLE IF NOT EXISTS cache ("
-            "  key TEXT PRIMARY KEY, payload TEXT, ts REAL)"
-        )
-        self.con.commit()
+        self.con = sqlite3.connect(path, check_same_thread=False)
+        self.lock = threading.Lock()
+        with self.lock:
+            self.con.execute(
+                "CREATE TABLE IF NOT EXISTS cache ("
+                "  key TEXT PRIMARY KEY, payload TEXT, ts REAL)"
+            )
+            self.con.commit()
 
     def get(self, key: str, max_age_days: int = 60) -> dict | None:
-        row = self.con.execute(
-            "SELECT payload, ts FROM cache WHERE key = ?", (key,)
-        ).fetchone()
+        with self.lock:
+            row = self.con.execute(
+                "SELECT payload, ts FROM cache WHERE key = ?", (key,)
+            ).fetchone()
         if not row:
             return None
         if time.time() - row[1] > max_age_days * 86400:
@@ -77,11 +87,12 @@ class Cache:
         return json.loads(row[0])
 
     def put(self, key: str, payload: dict) -> None:
-        self.con.execute(
-            "INSERT OR REPLACE INTO cache VALUES (?, ?, ?)",
-            (key, json.dumps(payload), time.time()),
-        )
-        self.con.commit()
+        with self.lock:
+            self.con.execute(
+                "INSERT OR REPLACE INTO cache VALUES (?, ?, ?)",
+                (key, json.dumps(payload), time.time()),
+            )
+            self.con.commit()
 
 
 class RateLimiter:

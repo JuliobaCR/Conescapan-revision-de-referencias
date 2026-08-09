@@ -24,13 +24,25 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from . import dedupe, llm_rescue, report
+from . import dedupe, llm_rescue, report, triage
 from .extract import extract_references
 from .verify import Verifier
 
 
+def submission_label(pdf: Path) -> str:
+    """Si el PDF viene de .../<N>/Submission/archivo.pdf (export típico de un
+    sistema de revisión), usa N como ID — mucho más útil que el nombre de
+    archivo para ubicar el submission real cuando hay 190 papers."""
+    parts = pdf.parts
+    for i, part in enumerate(parts):
+        if part == "Submission" and i > 0 and parts[i - 1].isdigit():
+            return parts[i - 1]
+    return pdf.stem
+
+
 def process_paper(pdf: Path, verifier: Verifier, grobid_url: str,
                    ollama_client: llm_rescue.OllamaClient | None = None) -> dict:
+    doc_flags = triage.inspect_pdf(pdf)
     refs = extract_references(pdf, grobid_url)
     n_rescued = 0
     if ollama_client is not None:
@@ -41,7 +53,14 @@ def process_paper(pdf: Path, verifier: Verifier, grobid_url: str,
         row = ref.to_dict()
         row["verdict"] = verdict.to_dict()
         out.append(row)
-    return {"file": pdf.name, "path": str(pdf), "references": out, "llm_rescued": n_rescued}
+    return {
+        "submission_id": submission_label(pdf),
+        "file": pdf.name,
+        "path": str(pdf),
+        "references": out,
+        "llm_rescued": n_rescued,
+        "doc_flags": doc_flags.to_dict(),
+    }
 
 
 def main() -> int:
@@ -64,7 +83,7 @@ def main() -> int:
     args = ap.parse_args()
 
     src = Path(args.input)
-    pdfs = sorted(src.glob("*.pdf")) if src.is_dir() else [src]
+    pdfs = sorted(src.rglob("*.pdf")) if src.is_dir() else [src]
     if not pdfs:
         print(f"No hay PDFs en {src}", file=sys.stderr)
         return 1
@@ -102,20 +121,28 @@ def main() -> int:
                 if r["verdict"]["status"] in report.NEEDS_REVIEW
             )
             extra = f", {res['llm_rescued']} rescatadas por LLM" if res.get("llm_rescued") else ""
-            print(f"  [{i}/{len(pdfs)}] {pdf.name} — "
-                  f"{len(res['references'])} refs, {flagged} por revisar{extra}")
+            warn = " — ⚠ revisar manualmente (no parece un paper)" \
+                if res["doc_flags"]["needs_review"] else ""
+            print(f"  [{i}/{len(pdfs)}] #{res['submission_id']} {pdf.name} — "
+                  f"{len(res['references'])} refs, {flagged} por revisar{extra}{warn}")
             results.append(res)
 
-    results.sort(key=lambda r: r["file"])
+    def _sort_key(r: dict):
+        sid = r["submission_id"]
+        return (0, int(sid)) if sid.isdigit() else (1, sid)
+
+    results.sort(key=_sort_key)
 
     overlaps = []
     if not args.no_overlap and len(pdfs) > 1:
         print("\nCruzando manuscritos por solapamiento textual…")
-        overlaps = dedupe.scan_batch(pdfs)
+        labels = {p: submission_label(p) for p in pdfs}
+        overlaps = dedupe.scan_batch(pdfs, labels=labels)
         print(f"  {len(overlaps)} pares por encima del umbral")
 
     report.render_html(results, overlaps, outdir / "reporte.html")
     report.render_csv(results, outdir / "referencias.csv")
+    report.render_papers_csv(results, outdir / "papers.csv")
     report.render_json(results, outdir / "resultados.json")
 
     total = sum(len(r["references"]) for r in results)

@@ -4,6 +4,8 @@ Cubren lo que puede romperse en silencio: el parseo del TEI y las reglas de
 decisión. Un bug acá no falla ruidosamente, solo produce veredictos malos.
 """
 
+from pathlib import Path
+
 import pytest
 
 from refcheck import dedupe
@@ -168,6 +170,35 @@ def test_documentos_distintos_no_disparan():
 
 def test_texto_muy_corto_no_produce_shingles():
     assert dedupe.shingles("apenas tres palabras") == set()
+
+
+def test_scan_batch_no_colisiona_por_nombre_de_archivo_igual(monkeypatch):
+    """Bug real visto con submissions de CONESCAPAN: dos papers distintos,
+    de carpetas distintas, ambos subidos como "paper.pdf". Sin labels por
+    path, el diccionario interno los pisaba y uno desaparecía del cruce."""
+    a = Path("7/Submission/paper.pdf")
+    b = Path("66/Submission/paper.pdf")
+    monkeypatch.setattr(dedupe, "body_text", lambda p: "contenido de prueba " * 10)
+    captured = {}
+    monkeypatch.setattr(dedupe, "compare", lambda sigs: captured.update(sigs) or [])
+
+    dedupe.scan_batch([a, b], labels={a: "7", b: "66"})
+
+    assert set(captured.keys()) == {"7", "66"}
+
+
+def test_scan_batch_sin_labels_no_colisiona_por_path_completo(monkeypatch):
+    """Sin labels, la clave por defecto es el path completo (único), no el
+    nombre de archivo (que puede repetirse)."""
+    a = Path("7/Submission/paper.pdf")
+    b = Path("66/Submission/paper.pdf")
+    monkeypatch.setattr(dedupe, "body_text", lambda p: "contenido de prueba " * 10)
+    captured = {}
+    monkeypatch.setattr(dedupe, "compare", lambda sigs: captured.update(sigs) or [])
+
+    dedupe.scan_batch([a, b])
+
+    assert len(captured) == 2
 
 
 # --------------------------------------------------- integración (opt-in)
