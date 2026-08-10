@@ -321,7 +321,7 @@ def extract_refs_regex(pdf_path: str | Path) -> list[Reference]:
 # extract_refs_regex o HEADINGS, para no servir extracciones viejas hechas
 # con lógica desactualizada.
 
-EXTRACT_CACHE_VERSION = 1
+EXTRACT_CACHE_VERSION = 2  # v2: ya no se cachean resultados degradados (ver extract_references)
 
 
 class ExtractionCache:
@@ -396,7 +396,12 @@ def extract_references(
     else:
         result = _extract_via_grobid(client, pdf_path)
 
-    if cache is not None:
+    # Solo se cachea un resultado limpio (GROBID de verdad, sin fallback).
+    # Si se cachea un resultado degradado, el paper queda "pegado" con el
+    # extractor débil para siempre — aunque GROBID esté caído por una
+    # razón transitoria (como pasó acá: se quedó sin memoria a mitad de
+    # un batch) y ya esté sano de nuevo en la próxima corrida.
+    if cache is not None and result[1] is None:
         cache.put(pdf_path, *result)
     return result
 

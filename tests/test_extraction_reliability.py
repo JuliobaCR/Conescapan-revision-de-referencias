@@ -145,3 +145,31 @@ def test_extract_references_usa_la_cache_en_la_segunda_llamada(tmp_path, monkeyp
     extract_references(pdf, cache=cache)
 
     assert calls["n"] == 1               # la segunda vez no vuelve a llamar a GROBID
+
+
+def test_no_cachea_resultados_degradados(tmp_path, monkeypatch):
+    """Bug real: si GROBID está caído (transitoriamente — se quedó sin
+    memoria a mitad de un batch de 191 papers) y se usa el fallback, ese
+    resultado NO debe quedar cacheado. Si no, el paper queda "pegado" con
+    el extractor débil para siempre, aunque GROBID ya esté sano de nuevo
+    en la próxima corrida."""
+    pdf = _make_pdf(tmp_path)
+    cache = ExtractionCache(str(tmp_path / "cache.db"))
+    monkeypatch.setattr(requests, "get", lambda url, timeout=None: FakeResponse(ok=False))
+
+    _refs, note = extract_references(pdf, cache=cache)
+
+    assert note is not None          # se usó el fallback
+    assert cache.get(pdf) is None    # pero no quedó cacheado
+
+
+def test_si_cachea_un_resultado_limpio(tmp_path, monkeypatch):
+    pdf = _make_pdf(tmp_path)
+    cache = ExtractionCache(str(tmp_path / "cache.db"))
+    monkeypatch.setattr(requests, "get", lambda url, timeout=None: FakeResponse())
+    monkeypatch.setattr(requests, "post", lambda *a, **k: FakeResponse(text=TEI_VACIO))
+
+    _refs, note = extract_references(pdf, cache=cache)
+
+    assert note is None
+    assert cache.get(pdf) is not None
