@@ -122,6 +122,30 @@ def test_cita_quimerica_se_marca():
     assert any("autor" in i for i in v.issues)
 
 
+def test_doi_citado_resuelve_pero_autores_no_matchean_es_cita_malformada():
+    """Caso real: la cita trae el DOI de la propia obra (así que existe con
+    certeza) pero los autores quedaron ilegibles en el texto citado — por
+    ejemplo, "I. O. H. V. María Parada" (varios autores sin separadores).
+    No es una cita quimérica (no hay autores inventados, no hay autores
+    reconocibles); el mensaje debe decirlo así, no sugerir fabricación."""
+    r = Reference(index=1, title="Attention Is All You Need",
+                  authors=["I. O. H. V. Martinez"], year=2017, doi="10.1/x")
+    v = decide(r, CANDIDATO, "crossref-doi")
+    assert v.status == "METADATA_MISMATCH"
+    assert any("la referencia existe" in i for i in v.issues)
+    assert any("DOI" in i and "Vaswani" in i for i in v.issues)
+    assert not any("ningún autor citado coincide" in i for i in v.issues)
+
+
+def test_autores_no_matchean_por_titulo_sin_doi_sigue_siendo_quimerica():
+    """Sin resolución por DOI/arXiv (solo búsqueda de título), el mensaje
+    de cita quimérica se mantiene — ahí sí es la señal fuerte de fabricación."""
+    r = Reference(index=1, title="Attention Is All You Need",
+                  authors=["Martinez"], year=2017)
+    v = decide(r, CANDIDATO, "dblp")
+    assert any("ningún autor citado coincide" in i for i in v.issues)
+
+
 def test_año_muy_desviado_se_marca():
     r = Reference(index=3, title="Attention Is All You Need",
                   authors=["Vaswani"], year=2011)
