@@ -90,6 +90,10 @@ ISSUE_CATEGORY_COLOR = {
     "otro": "#898781",
 }
 
+# Orden de severidad para ordenar la tabla de detalle — el mismo orden en
+# que ya están declaradas las categorías en PAPER_CATEGORY_LABEL.
+_CATEGORY_RANK = {cat: i for i, cat in enumerate(PAPER_CATEGORY_LABEL)}
+
 CSS = """
 :root{
   --ink:#0b0b0b; --dim:#52514e; --muted:#898781; --rule:#e1e0d9; --bg:#f9f9f7; --card:#fcfcfb;
@@ -150,17 +154,13 @@ td.st{width:170px;font-size:12px;font-weight:600;white-space:nowrap}
 .sev-MEDIO{color:var(--warn);font-weight:600}
 .sev-BAJO{color:var(--dim)}
 
-.rank-row{display:flex;align-items:center;gap:10px;padding:5px 0}
-.rank-label{width:220px;flex-shrink:0;font-size:12.5px;text-align:right;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rank-label a{color:inherit}
-.rank-bar{flex:1;min-width:0}
-.rank-value{width:130px;flex-shrink:0;font-size:12px;color:var(--dim);
-  font-variant-numeric:tabular-nums}
+.analytics-table td{font-size:12.5px}
+.analytics-table td.pct{font-variant-numeric:tabular-nums;white-space:nowrap}
+.analytics-table tr:hover td{background:var(--bg)}
 
 footer{color:var(--dim);font-size:12px;margin-top:36px;border-top:1px solid var(--rule);
   padding-top:14px;max-width:70ch}
-@media (max-width:640px){body{padding:20px 12px}.p-title{min-width:0}.rank-label{width:120px}}
+@media (max-width:640px){body{padding:20px 12px}.p-title{min-width:0}}
 """
 
 DISCLAIMER = (
@@ -319,6 +319,13 @@ def issue_type_counts(results: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _pct_flagged(paper: dict) -> float:
+    refs = paper["references"]
+    if not refs:
+        return 0.0
+    return sum(1 for r in refs if r["verdict"]["status"] in NEEDS_REVIEW) / len(refs)
+
+
 def top_flagged_papers(results: list[dict], limit: int = 20) -> list[tuple[dict, int, float]]:
     """Papers ordenados por % de referencias a revisar, de peor a mejor —
     la lista de "por dónde arranco" para el comité."""
@@ -328,20 +335,68 @@ def top_flagged_papers(results: list[dict], limit: int = 20) -> list[tuple[dict,
         if not refs or paper.get("processing_error"):
             continue
         flagged = sum(1 for r in refs if r["verdict"]["status"] in NEEDS_REVIEW)
-        scored.append((paper, flagged, flagged / len(refs)))
+        scored.append((paper, flagged, _pct_flagged(paper)))
     scored.sort(key=lambda x: x[2], reverse=True)
     return scored[:limit]
 
 
-def magnitude_bar_svg(width: float, max_width: float, height: int = 20,
-                       color: str = "#2a78d6") -> str:
-    """Barra simple para comparar magnitudes (un solo hue secuencial, sin
-    apilar) — para rankings tipo "top N papers"."""
-    w = width / max_width * 100 if max_width else 0
-    return (f'<svg width="100%" height="{height}" viewBox="0 0 100 {height}" '
-            f'preserveAspectRatio="none" role="img">'
-            f'<rect x="0" y="0" width="{w:.1f}" height="{height}" rx="3" fill="{color}"/>'
-            f'</svg>')
+def column_chart_svg(items: list[tuple[str, float, str]], width: int = 1100, height: int = 340,
+                      color: str = "#2a78d6") -> str:
+    """Gráfico de columnas con eje X (categorías, un rótulo por barra) y eje
+    Y (0-100%, con grilla y ticks) — a diferencia de una barra apilada, acá
+    el eje es explícito: sirve para comparar magnitud entre entidades
+    distintas (papers), no partes de un mismo todo.
+
+    items: [(rótulo, fracción 0-1, texto para el tooltip)]
+    """
+    margin_left, margin_bottom, margin_top, margin_right = 34, 92, 10, 10
+    plot_w = width - margin_left - margin_right
+    plot_h = height - margin_top - margin_bottom
+    n = len(items)
+    if n == 0:
+        return (f'<svg width="{width}" height="120" role="img" '
+                 f'aria-label="sin datos"></svg>')
+
+    gap = 10
+    bar_w = min(28, max(6, (plot_w - gap * (n - 1)) / n))
+    used_w = bar_w * n + gap * (n - 1)
+    x0 = margin_left + max(0.0, (plot_w - used_w) / 2)
+    baseline = margin_top + plot_h
+
+    parts = [f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img">']
+
+    for pct in (0, 25, 50, 75, 100):
+        y = margin_top + plot_h * (1 - pct / 100)
+        parts.append(
+            f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" '
+            f'stroke="var(--rule)" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<text x="{margin_left - 6}" y="{y + 3:.1f}" text-anchor="end" '
+            f'font-size="10" fill="var(--dim)">{pct}%</text>'
+        )
+    parts.append(
+        f'<line x1="{margin_left}" y1="{baseline:.1f}" x2="{width - margin_right}" '
+        f'y2="{baseline:.1f}" stroke="var(--muted)" stroke-width="1"/>'
+    )
+
+    x = x0
+    for label, frac, tip in items:
+        h = plot_h * max(0.0, min(frac, 1.0))
+        y = baseline - h
+        parts.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" '
+            f'rx="4" fill="{color}"><title>{_e(label)}: {_e(tip)}</title></rect>'
+        )
+        lx, ly = x + bar_w / 2, baseline + 14
+        parts.append(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="10" fill="var(--dim)" '
+            f'text-anchor="end" transform="rotate(-45 {lx:.1f} {ly:.1f})">{_e(label)}</text>'
+        )
+        x += bar_w + gap
+
+    parts.append("</svg>")
+    return "".join(parts)
 
 
 def _bar_segments(counts: dict[str, int], order: dict[str, str] | None = None) -> list[tuple[str, int]]:
@@ -616,22 +671,46 @@ def render_analytics_html(results: list[dict], out: Path) -> None:
     parts.append('</div>')
 
     # ------------------------------------------------------- ranking de papers
-    top = top_flagged_papers(results, limit=20)
-    parts.append('<div class=summary><h2>Papers con más referencias a revisar (top 20)</h2>')
-    if not top:
+    top = top_flagged_papers(results, limit=15)
+    parts.append('<div class=summary><h2>Papers con más referencias a revisar (top 15)</h2>')
+    if top:
+        items = [
+            (f"#{p['submission_id']}", pct, f"{flagged}/{len(p['references'])} refs a revisar")
+            for p, flagged, pct in top
+        ]
+        parts.append(column_chart_svg(items))
+    else:
         parts.append('<p style="color:var(--dim);font-size:13px">Nada para rankear todavía.</p>')
-    max_pct = max((pct for _, _, pct in top), default=1) or 1
-    for paper, flagged, pct in top:
-        total = len(paper["references"])
-        parts.append(
-            '<div class=rank-row>'
-            f'<span class=rank-label>#{_e(paper["submission_id"])} '
-            f'{_e(paper["file"][:40])}</span>'
-            f'<span class=rank-bar>{magnitude_bar_svg(pct, max_pct)}</span>'
-            f'<span class=rank-value>{pct:.0%} ({flagged}/{total})</span>'
-            '</div>'
-        )
     parts.append('</div>')
+
+    # ---------------------------------------------------- detalle de papers
+    needing_review = [p for p in results if paper_category(p) != "OK"]
+    needing_review.sort(key=lambda p: (_CATEGORY_RANK[paper_category(p)], -_pct_flagged(p)))
+
+    parts.append(f'<div class=summary><h2>Detalle de papers a revisar '
+                 f'({len(needing_review)} de {len(results)})</h2>')
+    parts.append('<table class=analytics-table>')
+    parts.append('<tr><td><b>#</b></td><td><b>Archivo</b></td><td><b>Categoría</b></td>'
+                 '<td><b>% a revisar</b></td><td><b>Comentario</b></td></tr>')
+    for paper in needing_review:
+        refs = paper["references"]
+        cat = paper_category(paper)
+        flagged = sum(1 for r in refs if r["verdict"]["status"] in NEEDS_REVIEW)
+        pct_text = f"{_pct_flagged(paper):.0%} ({flagged}/{len(refs)})" if refs else "—"
+        parts.append(
+            '<tr>'
+            f'<td>#{_e(paper["submission_id"])}</td>'
+            f'<td>{_e(paper["file"])}</td>'
+            f'<td><span class=p-badge style="background:{PAPER_CATEGORY_COLOR[cat]}">'
+            f'{_e(PAPER_CATEGORY_LABEL[cat])}</span></td>'
+            f'<td class=pct>{pct_text}</td>'
+            f'<td>{_e(paper_comment(paper))}</td>'
+            '</tr>'
+        )
+    if not needing_review:
+        parts.append('<tr><td colspan=5 style="color:var(--dim)">'
+                     'Nada que revisar — todos los papers salieron limpios.</td></tr>')
+    parts.append('</table></div>')
 
     parts.append(f"<footer>{DISCLAIMER}</footer>")
     parts.append("</div></html>")
