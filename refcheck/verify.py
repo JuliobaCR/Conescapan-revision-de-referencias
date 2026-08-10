@@ -41,6 +41,13 @@ T_WEAK = 80.0       # por debajo de esto, no es la misma obra
 YEAR_TOLERANCE = 1  # preprint en 2019 publicado en 2020 es normal
 SHORT_TITLE_WORDS = 4  # con menos palabras citadas, el título solo no alcanza para verificar
 
+# Backends que resuelven por el identificador que la propia cita trae (DOI/
+# arXiv ID), no por búsqueda de título. Si uno de estos resuelve, la obra
+# citada existe con certeza — el autor la identificó directamente. Un
+# desacuerdo de autores acá casi seguro es un problema de formato de la
+# cita, no evidencia de que la referencia sea falsa.
+ID_MATCH_SOURCES = {"crossref-doi", "arxiv"}
+
 
 @dataclass
 class Verdict:
@@ -174,6 +181,16 @@ def _title_word_count(ref: Reference) -> int:
     return len(normalize(ref.title or ref.raw).split())
 
 
+def _malformed_citation_issue(source: str | None, cand: dict) -> str:
+    id_kind = "DOI" if source == "crossref-doi" else "arXiv ID"
+    authors = ", ".join(cand.get("authors") or []) or "—"
+    return (
+        f"la referencia existe — el {id_kind} citado resuelve exactamente a esta obra. "
+        "El problema es el formato de la cita, no la referencia en sí: no se pudo "
+        f"reconocer a los autores en el texto citado. Autores según el registro: {authors}."
+    )
+
+
 def decide(ref: Reference, cand: dict | None, source: str | None) -> Verdict:
     if cand is None:
         return Verdict(status="NOT_FOUND", confidence=0.0)
@@ -183,8 +200,12 @@ def decide(ref: Reference, cand: dict | None, source: str | None) -> Verdict:
 
     if t_sim >= T_STRONG:
         # Cita quimérica: título real, autores inventados. Firma típica de
-        # una referencia generada por un LLM.
+        # una referencia generada por un LLM. Excepción: si resolvió por el
+        # DOI/arXiv ID que la propia cita trae, la obra existe con certeza
+        # — no es una cita inventada, es una mal formateada.
         if ov == 0.0:
+            if source in ID_MATCH_SOURCES:
+                issues = [_malformed_citation_issue(source, cand), *issues[1:]]
             return Verdict("METADATA_MISMATCH", t_sim / 100, source, cand, issues)
 
         # Un título citado muy corto ("machine learning power grid") puede
