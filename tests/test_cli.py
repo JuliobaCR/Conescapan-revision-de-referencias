@@ -4,7 +4,7 @@ con excepción se convierta en un registro visible, no que desaparezca."""
 
 from pathlib import Path
 
-from refcheck.cli import error_paper, submission_label
+from refcheck.cli import error_paper, needs_second_pass, submission_label
 from refcheck.report import paper_category, paper_comment
 
 
@@ -29,3 +29,23 @@ def test_error_paper_no_pierde_el_paper():
     assert "PDF corrupto" in paper["processing_error"]
     assert paper_category(paper) == "ERROR_PROCESAMIENTO"
     assert "PDF corrupto" in paper_comment(paper)
+
+
+def test_needs_second_pass_por_extraccion_degradada():
+    assert needs_second_pass({"extraction_note": "GROBID falló"}) is True
+
+
+def test_needs_second_pass_por_error_de_procesamiento():
+    assert needs_second_pass({"processing_error": "boom"}) is True
+
+
+def test_needs_second_pass_falso_si_salio_limpio():
+    assert needs_second_pass({"extraction_note": None, "processing_error": None}) is False
+
+
+def test_needs_second_pass_paper_recuperado_ya_no_lo_pide():
+    """El paper que devuelve process_paper() en el reintento exitoso no
+    debería pedir un tercer intento."""
+    recovered = error_paper(Path("x/Submission/y.pdf"), RuntimeError("algo"))
+    recovered["processing_error"] = None  # como si el reintento hubiera salido bien
+    assert needs_second_pass(recovered) is False
