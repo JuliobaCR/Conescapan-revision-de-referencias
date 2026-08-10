@@ -234,6 +234,8 @@ def main() -> int:
     _safe_render("papers.csv", report.render_papers_csv, results, outdir / "papers.csv")
     _safe_render("referencias.csv", report.render_csv, results, outdir / "referencias.csv")
     _safe_render("reporte.html", report.render_html, results, overlaps, outdir / "reporte.html")
+    _safe_render("reporte_analiticas.html", report.render_analytics_html,
+                 results, outdir / "reporte_analiticas.html")
 
     total = sum(len(r["references"]) for r in results)
     flagged = sum(

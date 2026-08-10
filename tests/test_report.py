@@ -1,6 +1,13 @@
 """Tests del dashboard: funciones puras, sin red ni PDFs."""
 
-from refcheck.report import match_link, paper_category, paper_comment
+from refcheck.report import (
+    extraction_source_counts,
+    issue_type_counts,
+    match_link,
+    paper_category,
+    paper_comment,
+    top_flagged_papers,
+)
 
 # ----------------------------------------------------------------- match_link
 
@@ -99,3 +106,50 @@ def test_comment_menciona_error_de_procesamiento():
 def test_comment_sin_referencias():
     paper = {"doc_flags": {"needs_review": False}, "references": []}
     assert "revisar la extracción" in paper_comment(paper)
+
+
+# ------------------------------------------------------------------ analíticas
+
+def test_extraction_source_counts():
+    results = [
+        {"processing_error": None, "extraction_note": None},
+        {"processing_error": None, "extraction_note": "GROBID falló"},
+        {"processing_error": "boom", "extraction_note": None},
+    ]
+    counts = extraction_source_counts(results)
+    assert counts == {"grobid": 1, "regex_fallback": 1, "error": 1}
+
+
+def test_issue_type_counts_categoriza_por_palabra_clave():
+    results = [{
+        "references": [
+            {"verdict": {"issues": ["ningún autor citado coincide con el registro"]}},
+            {"verdict": {"issues": ["año citado 2020 vs. registrado 2019"]}},
+            {"verdict": {"issues": ["venue citado «X» vs. «Y»"]}},
+            {"verdict": {"issues": ["título citado muy corto (2 palabras)"]}},
+            {"verdict": {"issues": ["coincidencia parcial de título (85%)"]}},
+            {"verdict": {"issues": ["algo que no matchea ninguna palabra clave"]}},
+        ],
+    }]
+    counts = issue_type_counts(results)
+    assert counts == {
+        "autor": 1, "anio": 1, "venue": 1,
+        "titulo_corto": 1, "titulo_parcial": 1, "otro": 1,
+    }
+
+
+def test_top_flagged_papers_ordena_de_peor_a_mejor():
+    peor = {"submission_id": "1", "file": "a.pdf", "references": [_ref("NOT_FOUND")] * 4,
+            "processing_error": None}
+    mejor = {"submission_id": "2", "file": "b.pdf",
+             "references": [_ref("VERIFIED"), _ref("VERIFIED"), _ref("VERIFIED"), _ref("NOT_FOUND")],
+             "processing_error": None}
+    top = top_flagged_papers([mejor, peor])
+    assert [p["submission_id"] for p, _, _ in top] == ["1", "2"]
+    assert top[0][2] == 1.0    # 100% a revisar
+    assert top[1][2] == 0.25   # 25% a revisar
+
+
+def test_top_flagged_papers_ignora_los_que_no_se_procesaron():
+    roto = {"submission_id": "9", "file": "c.pdf", "references": [], "processing_error": "boom"}
+    assert top_flagged_papers([roto]) == []
