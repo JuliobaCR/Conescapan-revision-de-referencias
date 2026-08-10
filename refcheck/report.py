@@ -54,6 +54,42 @@ PAPER_CATEGORY_COLOR = {
     "OK": "#0ca30c",
 }
 
+# Mismos colores que PAPER_CATEGORY_COLOR para las nociones equivalentes
+# (grobid=limpio="OK", regex_fallback="EXTRACCION_INCOMPLETA",
+# error="ERROR_PROCESAMIENTO") — el color sigue significando lo mismo en
+# las dos páginas del reporte.
+EXTRACTION_SOURCE_LABEL = {
+    "grobid": "GROBID (extracción completa)",
+    "regex_fallback": "Fallback regex (GROBID falló)",
+    "error": "Error de procesamiento",
+}
+EXTRACTION_SOURCE_COLOR = {
+    "grobid": "#0ca30c",
+    "regex_fallback": "#2a78d6",
+    "error": "#eb6834",
+}
+
+# Categórica propia para tipo de motivo de revisión — deliberadamente sin
+# pisar los colores de EXTRACTION_SOURCE_COLOR ni PAPER_CATEGORY_COLOR, que
+# aparecen en la misma página.
+ISSUE_CATEGORY_ORDER = ["autor", "anio", "venue", "titulo_corto", "titulo_parcial", "otro"]
+ISSUE_CATEGORY_LABEL = {
+    "autor": "Autores no coinciden",
+    "anio": "Año no coincide",
+    "venue": "Venue no coincide",
+    "titulo_corto": "Título citado muy corto",
+    "titulo_parcial": "Coincidencia parcial de título",
+    "otro": "Otro motivo",
+}
+ISSUE_CATEGORY_COLOR = {
+    "autor": "#1baf7a",
+    "anio": "#eda100",
+    "venue": "#e87ba4",
+    "titulo_corto": "#008300",
+    "titulo_parcial": "#e34948",
+    "otro": "#898781",
+}
+
 CSS = """
 :root{
   --ink:#0b0b0b; --dim:#52514e; --muted:#898781; --rule:#e1e0d9; --bg:#f9f9f7; --card:#fcfcfb;
@@ -114,9 +150,17 @@ td.st{width:170px;font-size:12px;font-weight:600;white-space:nowrap}
 .sev-MEDIO{color:var(--warn);font-weight:600}
 .sev-BAJO{color:var(--dim)}
 
+.rank-row{display:flex;align-items:center;gap:10px;padding:5px 0}
+.rank-label{width:220px;flex-shrink:0;font-size:12.5px;text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank-label a{color:inherit}
+.rank-bar{flex:1;min-width:0}
+.rank-value{width:130px;flex-shrink:0;font-size:12px;color:var(--dim);
+  font-variant-numeric:tabular-nums}
+
 footer{color:var(--dim);font-size:12px;margin-top:36px;border-top:1px solid var(--rule);
   padding-top:14px;max-width:70ch}
-@media (max-width:640px){body{padding:20px 12px}.p-title{min-width:0}}
+@media (max-width:640px){body{padding:20px 12px}.p-title{min-width:0}.rank-label{width:120px}}
 """
 
 DISCLAIMER = (
@@ -230,30 +274,107 @@ def paper_comment(paper: dict) -> str:
     return extraction_prefix + " ".join(bits)
 
 
-def _bar_segments(counts: dict[str, int]) -> list[tuple[str, int]]:
-    return [(s, counts[s]) for s in STATUS_LABEL if counts.get(s)]
+# --------------------------------------------------------------------------
+# Analíticas (página aparte, reporte_analiticas.html)
+# --------------------------------------------------------------------------
+
+def extraction_source_counts(results: list[dict]) -> dict[str, int]:
+    """Un paper por bucket: cómo se extrajo su bibliografía, o si ni
+    siquiera se pudo procesar."""
+    counts = {k: 0 for k in EXTRACTION_SOURCE_LABEL}
+    for paper in results:
+        if paper.get("processing_error"):
+            counts["error"] += 1
+        elif paper.get("extraction_note"):
+            counts["regex_fallback"] += 1
+        else:
+            counts["grobid"] += 1
+    return counts
+
+
+def _categorize_issue(issue: str) -> str:
+    low = issue.lower()
+    if "autor" in low:
+        return "autor"
+    if "año" in low or "ano" in low:
+        return "anio"
+    if "venue" in low:
+        return "venue"
+    if "corto" in low:
+        return "titulo_corto"
+    if "parcial" in low:
+        return "titulo_parcial"
+    return "otro"
+
+
+def issue_type_counts(results: list[dict]) -> dict[str, int]:
+    """Por qué se marcó cada referencia — para responder "¿son mayormente
+    autores mal citados, o títulos que no aparecen en ningún lado?" de un
+    vistazo, en vez de tener que abrir cada paper."""
+    counts = {k: 0 for k in ISSUE_CATEGORY_LABEL}
+    for paper in results:
+        for r in paper["references"]:
+            for issue in r["verdict"].get("issues", []):
+                counts[_categorize_issue(issue)] += 1
+    return counts
+
+
+def top_flagged_papers(results: list[dict], limit: int = 20) -> list[tuple[dict, int, float]]:
+    """Papers ordenados por % de referencias a revisar, de peor a mejor —
+    la lista de "por dónde arranco" para el comité."""
+    scored = []
+    for paper in results:
+        refs = paper["references"]
+        if not refs or paper.get("processing_error"):
+            continue
+        flagged = sum(1 for r in refs if r["verdict"]["status"] in NEEDS_REVIEW)
+        scored.append((paper, flagged, flagged / len(refs)))
+    scored.sort(key=lambda x: x[2], reverse=True)
+    return scored[:limit]
+
+
+def magnitude_bar_svg(width: float, max_width: float, height: int = 20,
+                       color: str = "#2a78d6") -> str:
+    """Barra simple para comparar magnitudes (un solo hue secuencial, sin
+    apilar) — para rankings tipo "top N papers"."""
+    w = width / max_width * 100 if max_width else 0
+    return (f'<svg width="100%" height="{height}" viewBox="0 0 100 {height}" '
+            f'preserveAspectRatio="none" role="img">'
+            f'<rect x="0" y="0" width="{w:.1f}" height="{height}" rx="3" fill="{color}"/>'
+            f'</svg>')
+
+
+def _bar_segments(counts: dict[str, int], order: dict[str, str] | None = None) -> list[tuple[str, int]]:
+    order = order or STATUS_LABEL
+    return [(s, counts[s]) for s in order if counts.get(s)]
 
 
 def stacked_bar_svg(counts: dict[str, int], width: int, height: int = 22,
-                     gap: int = 2, radius: int = 3, show_counts: bool = False) -> str:
+                     gap: int = 2, radius: int = 3, show_counts: bool = False,
+                     colors: dict[str, str] | None = None,
+                     labels: dict[str, str] | None = None) -> str:
     """Barra apilada 100% (part-to-whole). Cada segmento lleva <title> como
-    tooltip nativo del navegador — sin JS, sin CDN."""
-    segs = _bar_segments(counts)
+    tooltip nativo del navegador — sin JS, sin CDN. `colors`/`labels` dejan
+    reusarla con otra paleta (p.ej. categorías de paper en vez de estados
+    de referencia) sin duplicar la función."""
+    colors = colors or STATUS_COLOR
+    labels = labels or STATUS_LABEL
+    segs = _bar_segments(counts, labels)
     total = sum(c for _, c in segs) or 1
     if not segs:
         return (f'<svg width="{width}" height="{height}" role="img" '
-                 f'aria-label="sin referencias"></svg>')
+                 f'aria-label="sin datos"></svg>')
 
     n = len(segs)
     usable = max(width - gap * (n - 1), 1)
     parts = [f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img">']
     x = 0.0
-    for status, count in segs:
+    for key, count in segs:
         w = usable * count / total
-        label = f"{STATUS_LABEL.get(status, status)}: {count}"
+        label = f"{labels.get(key, key)}: {count}"
         parts.append(
             f'<rect x="{x:.1f}" y="0" width="{w:.1f}" height="{height}" rx="{radius}" '
-            f'ry="{radius}" fill="{STATUS_COLOR[status]}"><title>{_e(label)}</title></rect>'
+            f'ry="{radius}" fill="{colors[key]}"><title>{_e(label)}</title></rect>'
         )
         if show_counts and w > 26:
             parts.append(
@@ -279,11 +400,14 @@ def match_link(matched: dict) -> str | None:
     return None
 
 
-def status_legend_html() -> str:
+def status_legend_html(colors: dict[str, str] | None = None,
+                        labels: dict[str, str] | None = None) -> str:
+    colors = colors or STATUS_COLOR
+    labels = labels or STATUS_LABEL
     items = "".join(
         f'<span class="legend-item"><span class="swatch" '
-        f'style="background:{STATUS_COLOR[s]}"></span>{_e(STATUS_LABEL[s])}</span>'
-        for s in STATUS_LABEL
+        f'style="background:{colors[s]}"></span>{_e(labels[s])}</span>'
+        for s in labels
     )
     return f'<div class="legend">{items}</div>'
 
@@ -320,12 +444,14 @@ def render_html(results: list[dict], overlaps: list, out: Path) -> None:
         f"<title>Revisión de referencias — dashboard</title><style>{CSS}</style>",
         "<div class=wrap><h1>Revisión de referencias — dashboard</h1>",
         (f"<p class=sub>{len(results)} manuscritos · {total_refs} referencias · "
-         f"{datetime.now().astimezone():%d/%m/%Y %H:%M}</p>"),
+         f"{datetime.now().astimezone():%d/%m/%Y %H:%M} · "
+         f"<a href='reporte_analiticas.html'>Ver analíticas →</a></p>"),
     ]
 
     # ------------------------------------------------------------------ KPIs
     verified_pct = f"{tally.get('VERIFIED', 0) / max(total_refs, 1):.0%}"
     not_found_pct = f"{tally.get('NOT_FOUND', 0) / max(total_refs, 1):.0%}"
+    unparseable_pct = f"{tally.get('UNPARSEABLE', 0) / max(total_refs, 1):.0%}"
     parts.append('<div class=kpis>')
     parts.append(_stat_tile("Manuscritos", len(results)))
     parts.append(_stat_tile("Referencias totales", total_refs))
@@ -333,6 +459,8 @@ def render_html(results: list[dict], overlaps: list, out: Path) -> None:
                              f"{tally.get('VERIFIED', 0)} de {total_refs}"))
     parts.append(_stat_tile("No encontradas", tally.get("NOT_FOUND", 0),
                              f"{not_found_pct} del total"))
+    parts.append(_stat_tile("No se pudieron leer", tally.get("UNPARSEABLE", 0),
+                             f"{unparseable_pct} del total"))
     parts.append(_stat_tile("Papers a revisar", needs_review_papers,
                              f"de {len(results)} manuscritos"))
     parts.append('</div>')
@@ -441,6 +569,71 @@ def render_html(results: list[dict], overlaps: list, out: Path) -> None:
 
     parts.append(f"<footer>{DISCLAIMER}</footer>")
     parts.append(f"<script>{FILTER_JS}</script>")
+    parts.append("</div></html>")
+    out.write_text("".join(parts), encoding="utf-8")
+
+
+def render_analytics_html(results: list[dict], out: Path) -> None:
+    """Segunda página, aparte del dashboard principal: rankings y
+    desgloses que no entran en una tarjeta de KPI ni en la barra de
+    estados — para quien quiera mirar más profundo que "cuántas están
+    verificadas"."""
+    parts = [
+        "<!doctype html><html lang=es><meta charset=utf-8>",
+        "<meta name=viewport content='width=device-width,initial-scale=1'>",
+        f"<title>Revisión de referencias — analíticas</title><style>{CSS}</style>",
+        "<div class=wrap><h1>Analíticas</h1>",
+        (f"<p class=sub>{len(results)} manuscritos · "
+         f"{datetime.now().astimezone():%d/%m/%Y %H:%M} · "
+         f"<a href='reporte.html'>← Volver al dashboard</a></p>"),
+    ]
+
+    # ------------------------------------------------------- origen de la extracción
+    esrc = extraction_source_counts(results)
+    parts.append('<div class=summary><h2>Origen de la extracción, por paper</h2>')
+    parts.append(stacked_bar_svg(esrc, width=1100, height=28, show_counts=True,
+                                  colors=EXTRACTION_SOURCE_COLOR, labels=EXTRACTION_SOURCE_LABEL))
+    parts.append(status_legend_html(EXTRACTION_SOURCE_COLOR, EXTRACTION_SOURCE_LABEL))
+    parts.append('</div>')
+
+    # ------------------------------------------------------- papers por categoría
+    cat_counts: dict[str, int] = {}
+    for paper in results:
+        cat = paper_category(paper)
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+    parts.append('<div class=summary><h2>Papers por categoría</h2>')
+    parts.append(stacked_bar_svg(cat_counts, width=1100, height=28, show_counts=True,
+                                  colors=PAPER_CATEGORY_COLOR, labels=PAPER_CATEGORY_LABEL))
+    parts.append(status_legend_html(PAPER_CATEGORY_COLOR, PAPER_CATEGORY_LABEL))
+    parts.append('</div>')
+
+    # ------------------------------------------------------- motivos de revisión
+    issue_counts = issue_type_counts(results)
+    parts.append('<div class=summary><h2>Motivos de revisión, por tipo</h2>')
+    parts.append(stacked_bar_svg(issue_counts, width=1100, height=28, show_counts=True,
+                                  colors=ISSUE_CATEGORY_COLOR, labels=ISSUE_CATEGORY_LABEL))
+    parts.append(status_legend_html(ISSUE_CATEGORY_COLOR, ISSUE_CATEGORY_LABEL))
+    parts.append('</div>')
+
+    # ------------------------------------------------------- ranking de papers
+    top = top_flagged_papers(results, limit=20)
+    parts.append('<div class=summary><h2>Papers con más referencias a revisar (top 20)</h2>')
+    if not top:
+        parts.append('<p style="color:var(--dim);font-size:13px">Nada para rankear todavía.</p>')
+    max_pct = max((pct for _, _, pct in top), default=1) or 1
+    for paper, flagged, pct in top:
+        total = len(paper["references"])
+        parts.append(
+            '<div class=rank-row>'
+            f'<span class=rank-label>#{_e(paper["submission_id"])} '
+            f'{_e(paper["file"][:40])}</span>'
+            f'<span class=rank-bar>{magnitude_bar_svg(pct, max_pct)}</span>'
+            f'<span class=rank-value>{pct:.0%} ({flagged}/{total})</span>'
+            '</div>'
+        )
+    parts.append('</div>')
+
+    parts.append(f"<footer>{DISCLAIMER}</footer>")
     parts.append("</div></html>")
     out.write_text("".join(parts), encoding="utf-8")
 
