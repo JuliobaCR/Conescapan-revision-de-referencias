@@ -325,11 +325,14 @@ def render_html(results: list[dict], overlaps: list, out: Path) -> None:
 
     # ------------------------------------------------------------------ KPIs
     verified_pct = f"{tally.get('VERIFIED', 0) / max(total_refs, 1):.0%}"
+    not_found_pct = f"{tally.get('NOT_FOUND', 0) / max(total_refs, 1):.0%}"
     parts.append('<div class=kpis>')
     parts.append(_stat_tile("Manuscritos", len(results)))
     parts.append(_stat_tile("Referencias totales", total_refs))
     parts.append(_stat_tile("Referencias verificadas", verified_pct,
                              f"{tally.get('VERIFIED', 0)} de {total_refs}"))
+    parts.append(_stat_tile("No encontradas", tally.get("NOT_FOUND", 0),
+                             f"{not_found_pct} del total"))
     parts.append(_stat_tile("Papers a revisar", needs_review_papers,
                              f"de {len(results)} manuscritos"))
     parts.append('</div>')
