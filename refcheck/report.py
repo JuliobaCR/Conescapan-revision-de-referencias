@@ -154,8 +154,9 @@ td.st{width:170px;font-size:12px;font-weight:600;white-space:nowrap}
 .sev-MEDIO{color:var(--warn);font-weight:600}
 .sev-BAJO{color:var(--dim)}
 
-.analytics-table td{font-size:12.5px}
-.analytics-table td.pct{font-variant-numeric:tabular-nums;white-space:nowrap}
+.analytics-table{table-layout:fixed}
+.analytics-table td{font-size:12.5px;overflow-wrap:break-word}
+.analytics-table td.pct{font-variant-numeric:tabular-nums;white-space:nowrap;overflow-wrap:normal}
 .analytics-table tr:hover td{background:var(--bg)}
 
 footer{color:var(--dim);font-size:12px;margin-top:36px;border-top:1px solid var(--rule);
@@ -689,7 +690,11 @@ def render_analytics_html(results: list[dict], out: Path) -> None:
 
     parts.append(f'<div class=summary><h2>Detalle de papers a revisar '
                  f'({len(needing_review)} de {len(results)})</h2>')
-    parts.append('<table class=analytics-table>')
+    parts.append(
+        '<table class=analytics-table><colgroup>'
+        '<col style="width:44px"><col style="width:24%"><col style="width:150px">'
+        '<col style="width:100px"><col></colgroup>'
+    )
     parts.append('<tr><td><b>#</b></td><td><b>Archivo</b></td><td><b>Categoría</b></td>'
                  '<td><b>% a revisar</b></td><td><b>Comentario</b></td></tr>')
     for paper in needing_review:
