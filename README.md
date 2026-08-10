@@ -52,6 +52,12 @@ reprocesar sin volver a consultar las APIs).
 sistemas de revisión con estructura `<N>/Submission/archivo.pdf`, y en ese
 caso usa `N` como ID del paper en el reporte en vez del nombre de archivo.
 
+Si algún paper cayó al extractor de respaldo (GROBID falló) o ni siquiera se
+pudo procesar, al terminar el resto del batch se reintenta automáticamente
+con GROBID una vez más — si se había caído por algo transitorio (quedarse
+sin memoria a mitad de un batch largo, por ejemplo), para entonces suele
+estar sano de nuevo.
+
 | Opción | Default | Para qué |
 |---|---|---|
 | `--out` | `reporte` | Carpeta de salida |

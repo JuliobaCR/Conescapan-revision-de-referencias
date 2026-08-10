@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from . import dedupe, llm_rescue, report, triage
-from .extract import ExtractionCache, extract_references
+from .extract import ExtractionCache, GrobidClient, extract_references
 from .verify import Verifier
 
 
@@ -66,6 +66,13 @@ def process_paper(pdf: Path, verifier: Verifier, grobid_url: str,
     }
 
 
+def needs_second_pass(paper: dict) -> bool:
+    """¿Vale la pena reintentar este paper con GROBID al final del batch?
+    Cualquiera que no haya salido limpio: cayó al fallback, o ni siquiera
+    se pudo procesar."""
+    return bool(paper.get("extraction_note")) or bool(paper.get("processing_error"))
+
+
 def error_paper(pdf: Path, exc: BaseException) -> dict:
     """Un paper cuyo procesamiento explotó por algo no previsto en ninguna
     otra capa (PDF corrupto, encoding raro, lo que sea). Antes esto se
@@ -86,6 +93,14 @@ def error_paper(pdf: Path, exc: BaseException) -> dict:
 
 
 def main() -> int:
+    # En Windows, la consola no siempre usa UTF-8 (depende de la terminal:
+    # PowerShell moderno sí, cmd.exe o algunas terminales heredadas no) —
+    # sin esto, el primer print() con ⚠/▸/· revienta con UnicodeEncodeError
+    # y tira todo el proceso, después de haber gastado horas de trabajo.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     ap = argparse.ArgumentParser(description="Revisión de referencias, fase 1")
     ap.add_argument("input", help="carpeta con PDFs o un PDF suelto")
     ap.add_argument("--out", default="reporte", help="carpeta de salida")
@@ -164,6 +179,37 @@ def main() -> int:
         return (0, int(sid)) if sid.isdigit() else (1, sid)
 
     results.sort(key=_sort_key)
+
+    # Segunda pasada: los papers que cayeron a fallback (o que ni siquiera
+    # se pudieron procesar) tienen otra oportunidad si GROBID ya volvió a
+    # responder — típicamente se cayó por una razón transitoria (se quedó
+    # sin memoria a mitad de un batch largo, por ejemplo) y para cuando el
+    # resto del batch terminó, ya se recuperó solo o lo reiniciaron.
+    pending = [i for i, r in enumerate(results) if needs_second_pass(r)]
+    if pending and GrobidClient(args.grobid).alive():
+        print(f"\nGROBID responde de nuevo — reintentando {len(pending)} "
+              "papers que habían quedado con extracción degradada o sin procesar…")
+        recovered = 0
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            futures = {
+                pool.submit(process_paper, Path(results[i]["path"]), verifier, args.grobid,
+                            ollama_client, extract_cache): i
+                for i in pending
+            }
+            for fut in as_completed(futures):
+                i = futures[fut]
+                try:
+                    retried = fut.result()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  [warn] reintento falló para {results[i]['file']} ({exc})")
+                    continue
+                if not needs_second_pass(retried):
+                    results[i] = retried
+                    recovered += 1
+        print(f"  {recovered}/{len(pending)} recuperados con GROBID")
+    elif pending:
+        print(f"\n{len(pending)} papers con extracción degradada o sin procesar — "
+              "GROBID sigue sin responder, no se reintenta al final")
 
     overlaps = []
     if not args.no_overlap and len(pdfs) > 1:
